@@ -10,219 +10,25 @@ from . import utils
 import os, time
 
 
-def GCR(dat, w, S, N, realisations=1, inpaint_mode='inpaint', dat2=None, bla=None, poolmap=False):
-    """
-    Returns a number of constrained realizations for a flagged data vector with signal prior S and noise prior N,
-    following the Gaussian constrained realization equation. 
-    
-    Important note: any given realization will not match the data in the unflagged region. If the desire is to
-    in-paint flagged regions, you will need to select only this region of the output vector.
-    
-    Parameters:
-	    d (array_like):
-	    	Complex data vector. 
-	    w (array_like):
-	    	Flagging/mask vector (1 for unflagged data, 0 for flagged data).
-	    S (array_like):
-	    	Signal prior covariance matrix. Has the same dimension as the data 
-	    	vector. May only be real-valued.   
-	    N (array_like):
-	    	Noise prior covariance matrix. Has the same dimension as the data 
-	    	vector. May only be real-valued.
-	    realisations (int):
-	    	Number of realisations to return.
-	    inpaint_mode (str):
-	    	How to handle flagged regions. If set to `'inpaint'`, replace 
-	    	flagged regions with the in-painted solution (but leave the 
-	    	unflagged regions as the input data). If `'subtract'`, subtract 
-	    	the GCR solution from the data. Otherwise, return the GCR solution.
-	
-	Returns:
-		gcr_soln (array_like):
-			GCR solution, in-painted data, or filtered data, depending on the 
-			`inpaint_mode` setting.
-    """
-    s = len(dat)
-    d = dat.reshape((1,max(s,len(dat.T))))
-    nbaselines = 1
-    if bla is not None:
-        nbaselines = bla.shape[0] # n_rows (each redundant baseline is one row)
-        d = np.sum(bla, axis=0).reshape((1,max(len(dat),len(dat.T))))
-        
-    if dat2 is not None:
-        d2 = dat2.reshape((1,max(len(dat2),len(dat2.T))))
-        d = (d+d2)/2
-
-    if np.iscomplexobj(d) or np.iscomplexobj(S) or np.iscomplexobj(N):
-        complex_data=True
-    else:
-    	complex_data=False
-            
-    Sh = sp.linalg.sqrtm( S )
-    Nh = sp.linalg.sqrtm( N )
-    Si = np.linalg.inv( S )
-    Ni = w.T*np.linalg.inv( N )*w
-    Sih = sp.linalg.sqrtm( Si )
-    Nih = sp.linalg.sqrtm( Ni )
-           
-    A = nbaselines*Sh @ Ni @ Sh  + np.eye(s)
-    Ai = np.linalg.inv(A)
-    b = Sh @ Ni @ (w*d).T
-        
-    wiener, _ = sp.sparse.linalg.cg(A, b, maxiter=1e5, M=Ai) # Wiener / max-likelihood solution
-    Wnr = Sh@wiener
-    
-    # Create empty solution array
-    if complex_data:
-    	solns = np.zeros((realisations,s), dtype=complex) # array for solutions to GCR equation
-    else:
-    	solns = np.zeros((realisations,s))
-    
-    if complex_data:
-    	# Complex-valued version of the calculation
-    	for i in range(realisations):
-            omi, omj = np.random.randn(s,1),np.random.randn(s,1)
-            
-            cri = (omi+1j*omj)/2**0.5 + Sh @ Nih @ (   np.sum(np.random.randn(s,nbaselines),axis=1)+                                                    1j*np.sum(np.random.randn(s,nbaselines),axis=1)   ).reshape((s,1))/2**0.5
-            
-            bcri = b + cri
-            xboth, info2 = sp.sparse.linalg.cg(A, bcri, maxiter=1e5, M=Ai)
-            solns[i] = Sh@xboth
-    else:
-    	# Real-valued version of the calculation
-        for i in range(realisations):
-            omi = np.random.randn(s,1)
-            cri = omi + Sh @ Nih @ np.sum(np.random.randn(s,nbaselines),axis=0)
-            bcri = b + cri
-            xboth, info2 = sp.sparse.linalg.cg(A, bcri, maxiter=1e5, M=Ai)
-            solns[i] = Sh@xboth
-    
-    # In-paint into flagged regions if requested
-    unflagged_indices = np.where(w==1)
-    if inpaint_mode == 'inpaint':
-        Wnr[unflagged_indices] = dat[unflagged_indices]
-        for i,sol in enumerate(solns):
-            solns[i][unflagged_indices] = dat[unflagged_indices]
-    
-    # Subtract the solution from the unflagged data
-    if inpaint_mode == 'subtract':
-        Z = np.zeros(s, dtype=complex)
-        Z[unflagged_indices] = dat[unflagged_indices] - Wnr[unflagged_indices]
-        Wnr = Z
-        for i,sol in enumerate(solns):
-            Z = np.zeros(s, dtype=complex)
-            Z[unflagged_indices] = dat[unflagged_indices] - sol[unflagged_indices]
-            solns[i] = Z
-        
-    if poolmap==True:
-    	return solns
-    else:
-    	return Wnr, solns
-    
-
-def GCR_OQEarray(V, w, S, N, inpaint='inpaint'):
-    
-    VW = np.zeros(V.shape, dtype=complex)
-    VC = np.zeros(V.shape, dtype=complex)
-    
-    for i,rzn in enumerate(V):
-        if not i%2: 
-            id2=i+1 
-            wnr, cr = GCR(rzn, w, S, N, realisations=1, inpaint=inpaint, dat2=V[id2])
-            VW[i] = wnr
-            VC[i] = cr
-            if i==0: print('complex: data',np.iscomplexobj(rzn),'C_s',np.iscomplexobj(S),'C_n',np.iscomplexobj(N))
-
-            fi = np.where(w==0)
-            VW[i+1] = V[i+1]
-            VC[i+1] = V[i+1]
-            VW[i+1][fi] = wnr[fi]
-            VC[i+1][fi] = cr[:,fi]
-
-        if not i%100: print(i, end=' ')
-    return VW, VC
-
-
-def GCR_array(V, w, S, N, inpaint='inpaint', bla=None, ncpu=2):
-    
-    """
-    bla set to nbaselines (not None) - take noiseless sims and generate 
-    nbaselines \times noisy sims to hand to the GCR solver.
-    """
-    VW = np.zeros(V.shape, dtype=complex)
-    VC = np.zeros(V.shape, dtype=complex)
-       
-    Vidxs = np.arange(V.shape[0])
-    
-    st = time.time()
-    if bla is None:
-        with Pool(ncpu) as pool:
-            VC = pool.map(lambda idx: GCR(V[idx], w, S, N, 
-            							  realisations=1, 
-            							  inpaint=inpaint, 
-            							  poolmap=True), 
-                          Vidxs)
-                
-    else:
-        nbaselines = bla
-        for i,rzn in enumerate(V): # assuming now that these V are noiseless, we're going to create redundant baseline data here
-            
-            noises = 1.0 * np.random.multivariate_normal(mv, C_noise, nbaselines) \
-                   + 1.j * np.random.multivariate_normal(mv, C_noise, nbaselines)
-            redundant_bls = rzn + noises # broadcasting single V to nbaselines * noise
-            
-            wnr, cr = GCR(rzn, w, S, N, realisations=1, inpaint=inpaint, bla=redundant_bls)
-            VW[i] = wnr
-            VC[i] = cr
-            if i==0:
-            	print('complex: data', np.iscomplexobj(rzn),
-            		  'C_s', np.iscomplexobj(S),
-            		  'C_n', np.iscomplexobj(N))
-
-            if not i%100:
-            	print(i, end=' ')
-
-    print('%.1fs'%(time.time()-st), end=' ')
-    return VW, np.array(VC).reshape(V.shape)
-
-
-
-def GCR_eigarray(V, w, S, F_evecs, N, ncpu=2):
-    
-    VC = np.zeros(V.shape, dtype=complex)
-
-    Vidxs = np.arange(V.shape[0])
-    
-    st=time.time()
-    
-    with Pool(ncpu) as pool:
-        VC = pool.map(lambda idx: GCR_eig(V[idx], w, S, F_evecs, N), Vidxs)
-
-    print('%.1fs'%(time.time()-st), end=' ')
-    return np.array(VC).reshape(V.shape)
-
-
-
-def wfcorrection(S,N):
-    # does this need an fftshift? adding one in the results script
-    T = np.zeros((s,s), dtype=complex)
-
-    for i in range(s):
-        T[i] = m(i,s)
-        
-    return np.diag(T.conj().T @ ( S @ np.linalg.inv(S+N) @ N    ) @ T)
-
-
-
 def sample_S(s=None, sk=None, prior=None):
     """
     Draw samples of the bandpowers of S, p(S|s). This assumes that the conditional 
-    distribution for the bandpowers are uncorrelated with one another, i.e. the Fourier-
+    distributions for the bandpowers are uncorrelated with one another, i.e. the Fourier-
     space covariance S has no off-diagonals.
     
     Parameters:
         s (array_like):
-            A set of real-space samples of the field, of shape (Ntimes, Nfreq).
+            A set of real-space samples of the field, of shape 
+            `(Ntimes, Nfreq)`. This will be Fourier transformed. 
+            Alternatively, `sk` can be given.
+
+        sk (array_like):
+        	A set of Fourier-space samples of the field, of shape 
+        	`(Ntimes, Nfreq)`.
+
+        prior (array_like):
+			Array of delta function prior values, used to set certain modes to a 
+			fixed value.
     """
     if s is None and sk is None:
         raise ValueError("Must pass in s (real space) or sk (Fourier space) vector.")
@@ -238,14 +44,15 @@ def sample_S(s=None, sk=None, prior=None):
     for i in range(Nfreqs):
         x[i] = invgamma.rvs(a=alpha) * beta[i] # y = x / beta
     
-    
+    # Set prior
     if prior is not None:
         for i in range(Nfreqs):
             if prior[0,i] ==0: continue
             else: 
-                if x[i] > prior[0,i]:  x[i] = prior[0,i]
-                if x[i] < prior[1,i]:  x[i] = prior[1,i]
-                    
+                if x[i] > prior[0,i]:
+                	x[i] = prior[0,i]
+                if x[i] < prior[1,i]:
+                	x[i] = prior[1,i]
     return x
  
 
@@ -261,8 +68,8 @@ def sprior(signals, bins, factor):
     ds = np.sum(sk_ * sk_.conj(), axis=0).real
     prior = np.zeros((2,Nfreq))
     
-    prior[0] = ds*factor
-    prior[1] = ds/factor
+    prior[0] = ds * factor
+    prior[1] = ds / factor
     
     prior[0,bins+1:-bins] = 0
     prior[1,bins+1:-bins] = 0
@@ -270,123 +77,295 @@ def sprior(signals, bins, factor):
     return prior/(Nobs/2 -1)
 
 
-def GCR_eig(dat, w, matlib, F_evecs, f0=None, amps=None):
+def gcr_fgmodes_1d(vis, w, matrices, fgmodes, fourier_op, f0=None):
     """
-    GCR w/ fitted eigenmodes of C_foreground
+    Perform the GCR step on a single time sample.
     
-    F_evecs --> matrix of foreground eigenvectors
-    f0 --> mean of foregrounds
-    matlib --> contains a load of matrices the GCR needs
+    Parameters:
+		vis (array_like):
+			Array of complex visibilities for a single baseline, of shape 
+			`(Ntimes, Nfreqs)`.
+		w (array_like):
+			Array of flags or weights (e.g. 1 for unflagged, 0 for flagged).
+		matrices (array_like):
+			Array containing precomputed matrices needed by the linear system. 
+		fgmodes (array_like):
+			Foreground mode array, of shape (Nmodes, Nfreqs). This should be 
+			derived from a PCA decomposition of a model foreground covariance 
+			matrix or similar.
+		f0 (array_like):
+			Initial guess for the foreground amplitudes, with shape `(Nmodes,)`.
+		nproc (int):
     
     """
-    s = F_evecs.shape[0]
-    fvs = F_evecs.shape[1]
-        
-    d = dat.reshape((1,max(s,len(dat.T))))
+    Nfreqs, Nmodes = fgmodes.shape
+    d = vis.reshape((1,max(s,len(dat.T))))
 
-    Sh = matlib[0][0]
-    Si = matlib[0][1]
-    Ni = matlib[0][2]
-    Sih = matlib[0][3]
-    Nih = matlib[0][4]
-    A = matlib[1][0]
-    Ai = matlib[1][1]
-            
-    omi, omj = np.random.randn(s,1),np.random.randn(s,1)
-    omk, oml = np.random.randn(s,1),np.random.randn(s,1)
-    oma, omb = (omi+1j*omj)/2**0.5 , (omk+1j*oml)/2**0.5
+    # Extract precomputed matrices needed by the linear system
+    F = fourier_op
+    Sh = matrices[0][0]
+    Si = matrices[0][1]
+    Ni = matrices[0][2]
+    Sih = matrices[0][3]
+    Nih = matrices[0][4]
+    A = matrices[1][0]
+    Ai = matrices[1][1]
+    
+    # Unit complex Gaussian random realisation
+    omi, omj = np.random.randn(Nfreqs,1), np.random.randn(Nfreqs,1)
+    omk, oml = np.random.randn(Nfreqs,1), np.random.randn(Nfreqs,1)
+    oma, omb = (omi + 1.j*omj)/2**0.5, (omk + 1.j*oml)/2**0.5
 
-    b = np.zeros((s+fvs,1), dtype=complex)
-
+    # Construct RHS vector
+    b = np.zeros((Nfreqs + Nmodes,1), dtype=complex)
     b[:s] = Ni @ (w*d).T + Sih@oma + Nih @ omb
     b[s:] = F.T.conj() @ (Ni @ (w*d).T + Nih @ omb) 
     
+    # Run CG solver, preconditioned by M=Ai
+    x0 = None
     if f0 is not None:
-        xboth, info2 = sp.sparse.linalg.cg(A, b, maxiter=1e5, x0=np.concatenate((np.zeros(s,dtype=complex),f0)), M=Ai)
-    else: 
-        xboth, info2 = sp.sparse.linalg.cg(A, b, maxiter=1e5, M=Ai)
-        
-    sig_sol = xboth[:s]
-    fg_sol = xboth[s:] @ F.T            
-
-    sol = sig_sol + fg_sol
-       
-
-    if amps==True: return xboth
-    else: return sig_sol
-
-
-def makeS(delayspec):
+    	x0 = np.concatenate((np.zeros(Nfreqs, dtype=complex), f0))
+    xsoln, info = sp.sparse.linalg.cg(A, b, maxiter=1e5, x0=x0, M=Ai)
     
-    # transforms the sampled delay spectrum back into freq-freq for the next iter's C_signal
-    
-    N_freq = delayspec.size
-    
-    C_sigfft = np.zeros((N_freq, N_freq), dtype=complex)
-    
-    for i in range(N_freq):
-        C_sigfft[i,i] = delayspec[i]
-        
-    C_sig = (FO.T.conj() @ C_sigfft @ FO).real
-    
-    return C_sig
+    # Return solution vector
+    return xsoln
     
 
-def GCR_eigarray(V, w, matlib, F_evecs, f0=None, ncpu=2, amps=None):
-    
-    # performing the GCR step on all LSTs, uses parallelization 
-    
-    if amps: VC = np.zeros((V.shape[0],V.shape[1]+F_evecs.shape[1]), dtype=complex)
-    else: VC = np.zeros(V.shape, dtype=complex)
+def gcr_fgmodes(vis, w, matrices, fgmodes, f0=None, nproc=1):
+    """
+	Perform the GCR step on all time samples, using parallelisation if 
+	possible.
 
-    Vidxs = np.arange(V.shape[0])
-    
-    st=time.time()
-    with Pool(ncpu) as pool:
-        VC = pool.map(lambda idx: GCR_eig(V[idx], w, matlib, F_evecs, f0=f0, amps=amps), Vidxs)
+	Parameters:
+		vis (array_like):
+			Array of complex visibilities for a single baseline, of shape 
+			`(Ntimes, Nfreqs)`.
+		w (array_like):
+			Array of flags or weights (e.g. 1 for unflagged, 0 for flagged).
+		matrices (array_like):
+			Array containing precomputed matrices needed by the linear system. 
+		fgmodes (array_like):
+			Foreground mode array, of shape (Nmodes, Nfreqs). This should be 
+			derived from a PCA decomposition of a model foreground covariance 
+			matrix or similar.
+		f0 (array_like):
+			Initial guess for the foreground amplitudes, with shape `(Nmodes,)`.
+		nproc (int):
+			Number of processes to use for parallelised functions.
 
-    print('%.1fs'%(time.time()-st), end=' ')
-    if amps: return np.array(VC).reshape((V.shape[0],-1))
-    else: return np.array(VC).reshape(V.shape)
+	Returns:
+		samples (array_like):
+			Array of signal + foreground realisations for each time sample, 
+			of shape `(Ntimes, Nfreqs + Nmodes)`.
+    """
+    samples = np.zeros((vis.shape[0], vis.shape[1] + fgmodes.shape[1]), dtype=complex)
+    idxs = np.arange(vis.shape[0])
+    
+    # Run GCR method on each time sample in parallel
+    st = time.time()
+    with Pool(nproc) as pool:
+        samples = pool.map(lambda idx: gcr_fgmodes_1d(vis=vis[idx], 
+	        										  w=w, 
+	        										  matrices=matlib, 
+	        										  fgmodes=fgmodes, 
+	        										  fourier_op=fourier_op,
+	        										  f0=f0), 
+        		           idxs)
+
+    # Return sample
+    print('%.1fs' % (time.time()-st), end=' ')
+    return np.array(samples).reshape((vis.shape[0],-1))
 
 
-# the single iteration / step function
+def covariance_from_pspec(ps, fourier_op):
+    """
+    Transform the sampled power spectrum into a frequency-frequency covariance 
+    matrix that can be used for the next iteration.
+    """
+    Nfreqs = ps.size
+    Csigfft = np.zeros((Nfreqs, Nfreqs), dtype=complex)
+    Csigfft[np.diag_indices(Nfreqs)] = delayspec
+    C = (fourier_op.T.conj() @ Csigfft @ fourier_op).real
+    return C
 
-def Gibbs_eig_step(vis, S, F_evecs,  N, flags, f0=None, amps=None, prior=None, ncpu=2):
-    
-    Nvis,Nfreq = vis.shape
-    
-    fvs = F_evecs.shape[1]
-    A_l = int(s + fvs) 
-    
-    matlib = [0,0]
-    matlib[0] = np.zeros((5,Nfreq,Nfreq),dtype=complex)
-    matlib[1] = np.zeros((2,A_l,A_l),dtype=complex)
 
-    matlib[0][0] = sp.linalg.sqrtm( S ) # Sh
-    matlib[0][1] = np.linalg.inv( S )   # Si
-    matlib[0][2] = flags.T*np.linalg.inv( N )*flags # Ni
-    matlib[0][3] = sp.linalg.sqrtm( matlib[0][1] )  # Sih
-    matlib[0][4] = sp.linalg.sqrtm( matlib[0][2] )  # Nih
+def gibbs_step_fgmodes(vis, flags, signal_S, fgmodes, Ninv, ps_prior=None, 
+					   f0=None, nproc=1):
+    """
+	Perform a single Gibbs iteration for a Gibbs sampling scheme using a foreground model 
+	based on frequency templates for multiple foreground modes.
+
+	Parameters:
+		vis (array_like):
+			Array of complex visibilities for a single baseline, of shape 
+			`(Ntimes, Nfreqs)`.
+		flags (array_like):
+			Array of flags (1 for unflagged, 0 for flagged).
+		S_initial (array_like):
+			Initial guess for the EoR signal frequency-frequency covariance. 
+			A better guess should result in faster convergence.
+		fgmodes (array_like):
+			Foreground mode array, of shape (Nmodes, Nfreqs). This should be 
+			derived from a PCA decomposition of a model foreground covariance 
+			matrix or similar.
+		Ninv (array_like):
+			Inverse noise variance matrix. This can either have shape 
+			`(Ntimes, Nfreqs, Nfreqs)`, one for each time, or can be a common 
+			one for all times with shape `(Nfreqs, Nfreqs)`.
+		ps_prior (array_like):
+			EoR signal power spectrum prior.
+		f0 (array_like):
+			Initial guess for the foreground amplitudes, with shape `(Nmodes,)`.
+		nproc (int):
+			Number of processes to use for parallelised functions.
+
+	Returns:
+		signal_cr (array_like):
+			Samples of the signal, shape `(Ntimes, Nfreqs)`.
+		S_sample (array_like):
+			Sample of the signal covariance, shape `(Nfreqs, Nfreqs)`. This is 
+			simply a transformation of the power spectrum.
+		ps_sample (array_like):
+			Sample of the signal power spectrum bandpowers, shape `(Nfreqs,)`. 
+		fg_amps (array_like):
+			Sample of the foreground amplitudes, shape `(Nmodes,)`.
+    """
+    # Shape of data and operators
+    Nvis, Nfreqs = vis.shape
+    Nmodes = fgmodes.shape[1]
+    Nparams = Nfreqs + Nmodes
+
+    # Precompute 2D Fourier operator matrix
+    fourier_op = utils.fourier_op(Nfreqs)
     
-    A = np.zeros((A_l, A_l), dtype=complex)
-    A[:s,:s] =  matlib[0][1] + matlib[0][2]  # Si + Ni
-    A[:s,s:] = matlib[0][2] @ F_evecs     
-    A[s:,:s] =  F_evecs.T.conj() @ matlib[0][2]  
-    A[s:,s:] = F_evecs.T.conj() @ matlib[0][2] @ F_evecs
+    # Construct matrix structure
+    matrices = [0,0]
+    matrices[0] = np.zeros((5, Nfreqs, Nfreqs), dtype=complex)
+    matrices[1] = np.zeros((2, Nparams, Nparams), dtype=complex)
+
+    # Construct necessary operators for GCR
+    matrices[0][0] = sp.linalg.sqrtm(S) # Sh
+    matrices[0][1] = np.linalg.inv(S)   # Si
+    matrices[0][2] = flags.T * Ninv * flags # Ni # FIXME
+    matrices[0][3] = sp.linalg.sqrtm( matrices[0][1] )  # Sih
+    matrices[0][4] = sp.linalg.sqrtm( matrices[0][2] )  # Nih
+    
+    # Construct operator matrix
+    A = np.zeros((Nparams, Nparams), dtype=complex)
+    A[:s,:s] = matrices[0][1] + matrices[0][2]  # Si + Ni
+    A[:s,s:] = matrices[0][2] @ fgmodes
+    A[s:,:s] = fgmodes.T.conj() @ matrices[0][2]
+    A[s:,s:] = fgmodes.T.conj() @ matrices[0][2] @ fgmodes
 
     matlib[1][0] = A
-    matlib[1][1] = np.linalg.inv(A)
+    matlib[1][1] = np.linalg.pinv(A) # pseudo-inverse, to be used as a preconditioner
     
-    cr = GCR_eigarray(vis, flags, matlib, F_evecs, f0=f0, ncpu=ncpu, amps=amps)
-    if amps: 
-        amplitudes = cr[:,-F_evecs.shape[1]:]
-        cr = cr[:,:-F_evecs.shape[1]]
+    # (1) Solve GCR equation to get EoR signal and foreground amplitude realisations
+    cr = gcr_fgmodes(vis=vis, 
+    				 w=flags, 
+    				 matrices=matrices, 
+    				 fgmodes=fgmodes, 
+    				 f0=f0, 
+    				 nproc=nproc)
     
-    ds_sample = sample_S(s=cr, prior=prior)
+    # Extract separate signal and FG parts from the solution
+    signal_cr = cr[:,:-fgmodes.shape[1]]
+    fg_amps = cr[:,-fgmodes.shape[1]:]
     
-    Snew = makeS(ds_sample/(2*Nfreq**2)) # divide by factor of 2 * N_freq^2
+    # (2) Sample EoR signal power spectrum (and also convert to equivalent 
+    # covariance matrix sample)
+    ps_sample = sample_S(s=signal_cr, prior=ps_prior)
+    S_sample = covariance_from_pspec(ps_sample/(2*Nfreqs**2), fourier_op)
     
-    if amps: return cr, Snew, ds_sample, amplitudes
-    else: return cr, Snew
+    # Return samples
+    return signal_cr, S_sample, ps_sample, fg_amps
+
+
+def gibbs_sample_with_fg(vis, flags, S_initial, fgmodes, Ninv, ps_prior, 
+						 Niter=100, seed=None, verbose=True, nproc=1):
+	"""
+	Run a Gibbs chain on data for a single baseline, using a foreground model 
+	based on frequency templates for multiple foreground modes. 
+
+	This will return samples of EoR signal and foreground amplitude 
+	constrained realisations, and the signal frequency-frequency covariance 
+	and power spectrum. 
+
+	Parameters:
+		vis (array_like):
+			Array of complex visibilities for a single baseline, of shape 
+			`(Ntimes, Nfreqs)`.
+		flags (array_like):
+			Array of flags (1 for unflagged, 0 for flagged).
+		S_initial (array_like):
+			Initial guess for the EoR signal frequency-frequency covariance. 
+			A better guess should result in faster convergence.
+		fgmodes (array_like):
+			Foreground mode array, of shape (Nmodes, Nfreqs). This should be 
+			derived from a PCA decomposition of a model foreground covariance 
+			matrix or similar.
+		Ninv (array_like):
+			Inverse noise variance matrix. This can either have shape 
+			`(Ntimes, Nfreqs, Nfreqs)`, one for each time, or can be a common 
+			one for all times with shape `(Nfreqs, Nfreqs)`.
+		ps_prior (array_like):
+			EoR signal power spectrum prior.
+		Niter (int):
+			Number of iterations of the sampler to run.
+		seed (int):
+			Random seed to use for random parts of the sampler.
+		verbose (bool):
+			If True, output basic timing stats about each iteration.
+		nproc (int):
+			Number of processes to use for parallelised functions.
+
+	Returns:
+		signal_cr (array_like):
+			Samples of the signal, shape `(Niter, Ntimes, Nfreqs)`.
+		signal_S (array_like):
+			Samples of the signal covariance, shape `(Niter, Nfreqs, Nfreqs)`. 
+			These are simply transformations of the power spectrum.
+		signal_ps (array_like):
+			Sample of the signal power spectrum bandpowers, shape 
+			`(Niter, Nfreqs)`. 
+		fg_amps (array_like):
+			Samples of the foreground amplitudes, shape `(Niter, Nmodes)`.
+	"""
+	# Set random seed
+    np.random.seed(seed)
+
+    # Get shape of data/foreground modes
+    Ntimes, Nfreqs = vis.shape
+    Nmodes = fgmodes.shape[0]
+    assert fgmodes.shape[1] == Nfreqs, "fgmodes must have shape (Nmodes, Nfreqs)"
+    if len(Ninv.shape) == 3:
+    	assert Ninv.shape[0] == Ntimes, \
+    		"Ninv shape must be (Ntimes, Nfreqs, Nfreqs) or (Nfreqs, Nfreqs)"
+
+    # Set up arrays for sampling
+    signal_cr = np.zeros((Niter, Ntimes, Nfreqs), dtype=complex)
+    signal_S = np.zeros((Niter, Nfreqs, Nfreqs))
+    signal_ps = np.zeros((Niter, Nfreqs))
+    fg_amps = np.zeros((Niter, Ntimes, Nmodes),dtype=complex)
+
+    # Set initial value for signal_S
+    signal_S = S_initial.copy()
+
+    # Loop over iterations
+    for i in range(Niter):
+    	if verbose:
+        	print('IT#%04d'%(i+1),end=', ')
+        
+        # Do Gibbs iteration
+        signal_cr[i], signal_S, signal_ps[i], fg_amps[i] \
+        				= gibbs_step_fgmodes(vis=vis*flags, 
+                                             flags=flags,
+                                             signal_S=signal_S, 
+                                             fgmodes=fgmodes,
+                                             Ninv=Ninv, 
+                                             ps_prior=ps_prior, 
+                                             f0=None, 
+                                             amps=True,
+                                             nproc=nproc)
     
+    return signal_cr, signal_S, signal_ps, fg_amps
