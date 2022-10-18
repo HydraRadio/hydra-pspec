@@ -55,14 +55,14 @@ def dpss_fit_modes(d, w, freqs, cov, nmodes=10, alpha=1.,
             amplitudes of the sinusoids.
     """
     # Get shape of data etc.
-    assert d.size == cov.shape[0] == cov.shape[1] == freqs.size == w.size,
+    assert d.size == cov.shape[0] == cov.shape[1] == freqs.size == w.size, \
              "Data, flags, covariance, and freqs arrays must have same number of channels"
     
     # Taper
     if taper is None:
         taper = 1.
     else:
-        assert taper.size == freqs.size,
+        assert taper.size == freqs.size, \
                      "'taper' must be evaluated at locations given in 'freqs'"
     
     # Precompute DPSS basis functions, shape: (nmodes, nfreqs)

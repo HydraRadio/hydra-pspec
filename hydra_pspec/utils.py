@@ -68,7 +68,7 @@ def trim_flagged_channels(w, x):
             Input array with the flagged channels removed.
     """
     # Check inputs
-    assert np.shape(x) == (w.size,) or np.shape(x) == (w.size, w.size),
+    assert np.shape(x) == (w.size,) or np.shape(x) == (w.size, w.size), \
              "Input array must have shape (w.size) or (w.size, w.size)"
 
     # 1D case

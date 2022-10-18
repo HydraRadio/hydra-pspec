@@ -5,6 +5,7 @@ from scipy.signal.windows import blackmanharris as BH
 from scipy.stats import invgamma
 from scipy.optimize import minimize, Bounds
 
+from multiprocess import Pool
 from . import utils
 import os, time
 
@@ -77,7 +78,7 @@ def sprior(signals, bins, factor):
     return prior / (Nobs / 2 - 1)
 
 
-def gcr_fgmodes_1d(vis, w, matrices, fgmodes, fourier_op, f0=None):
+def gcr_fgmodes_1d(vis, w, matrices, fgmodes, f0=None):
     """
     Perform the GCR step on a single time sample.
 
@@ -99,10 +100,9 @@ def gcr_fgmodes_1d(vis, w, matrices, fgmodes, fourier_op, f0=None):
 
     """
     Nfreqs, Nmodes = fgmodes.shape
-    d = vis.reshape((1, max(s, len(dat.T))))
+    d = vis.reshape((1, max(Nfreqs, len(vis.T))))
 
     # Extract precomputed matrices needed by the linear system
-    F = fourier_op
     Sh = matrices[0][0]
     Si = matrices[0][1]
     Ni = matrices[0][2]
@@ -118,8 +118,8 @@ def gcr_fgmodes_1d(vis, w, matrices, fgmodes, fourier_op, f0=None):
 
     # Construct RHS vector
     b = np.zeros((Nfreqs + Nmodes, 1), dtype=complex)
-    b[:s] = Ni @ (w * d).T + Sih @ oma + Nih @ omb
-    b[s:] = F.T.conj() @ (Ni @ (w * d).T + Nih @ omb)
+    b[:Nfreqs] = Ni @ (w * d).T + Sih @ oma + Nih @ omb
+    b[Nfreqs:] = fgmodes.T.conj() @ (Ni @ (w * d).T + Nih @ omb)
 
     # Run CG solver, preconditioned by M=Ai
     x0 = None
@@ -148,6 +148,8 @@ def gcr_fgmodes(vis, w, matrices, fgmodes, f0=None, nproc=1):
             Foreground mode array, of shape (Nmodes, Nfreqs). This should be
             derived from a PCA decomposition of a model foreground covariance
             matrix or similar.
+        fourier_op (array_like):
+            Pre-computed Fourier operator.
         f0 (array_like):
             Initial guess for the foreground amplitudes, with shape `(Nmodes,)`.
         nproc (int):
@@ -168,9 +170,8 @@ def gcr_fgmodes(vis, w, matrices, fgmodes, f0=None, nproc=1):
             lambda idx: gcr_fgmodes_1d(
                 vis=vis[idx],
                 w=w,
-                matrices=matlib,
+                matrices=matrices,
                 fgmodes=fgmodes,
-                fourier_op=fourier_op,
                 f0=f0,
             ),
             idxs,
@@ -188,7 +189,7 @@ def covariance_from_pspec(ps, fourier_op):
     """
     Nfreqs = ps.size
     Csigfft = np.zeros((Nfreqs, Nfreqs), dtype=complex)
-    Csigfft[np.diag_indices(Nfreqs)] = delayspec
+    Csigfft[np.diag_indices(Nfreqs)] = ps
     C = (fourier_op.T.conj() @ Csigfft @ fourier_op).real
     return C
 
@@ -206,11 +207,10 @@ def gibbs_step_fgmodes(
             `(Ntimes, Nfreqs)`.
         flags (array_like):
             Array of flags (1 for unflagged, 0 for flagged).
-        S_initial (array_like):
-            Initial guess for the EoR signal frequency-frequency covariance.
-            A better guess should result in faster convergence.
+        signal_S (array_like):
+            Current value of the EoR signal frequency-frequency covariance.
         fgmodes (array_like):
-            Foreground mode array, of shape (Nmodes, Nfreqs). This should be
+            Foreground mode array, of shape (Nfreqs, Nmodes). This should be
             derived from a PCA decomposition of a model foreground covariance
             matrix or similar.
         Ninv (array_like):
@@ -241,7 +241,7 @@ def gibbs_step_fgmodes(
     Nparams = Nfreqs + Nmodes
 
     # Precompute 2D Fourier operator matrix
-    fourier_op = utils.fourier_op(Nfreqs)
+    fourier_op = utils.fourier_operator(Nfreqs)
 
     # Construct matrix structure
     matrices = [0, 0]
@@ -249,21 +249,21 @@ def gibbs_step_fgmodes(
     matrices[1] = np.zeros((2, Nparams, Nparams), dtype=complex)
 
     # Construct necessary operators for GCR
-    matrices[0][0] = sp.linalg.sqrtm(S)  # Sh
-    matrices[0][1] = np.linalg.inv(S)  # Si
+    matrices[0][0] = sp.linalg.sqrtm(signal_S)  # Sh
+    matrices[0][1] = np.linalg.inv(signal_S)  # Si
     matrices[0][2] = flags.T * Ninv * flags  # Ni # FIXME
     matrices[0][3] = sp.linalg.sqrtm(matrices[0][1])  # Sih
     matrices[0][4] = sp.linalg.sqrtm(matrices[0][2])  # Nih
 
     # Construct operator matrix
     A = np.zeros((Nparams, Nparams), dtype=complex)
-    A[:s, :s] = matrices[0][1] + matrices[0][2]  # Si + Ni
-    A[:s, s:] = matrices[0][2] @ fgmodes
-    A[s:, :s] = fgmodes.T.conj() @ matrices[0][2]
-    A[s:, s:] = fgmodes.T.conj() @ matrices[0][2] @ fgmodes
+    A[:Nfreqs, :Nfreqs] = matrices[0][1] + matrices[0][2]  # Si + Ni
+    A[:Nfreqs, Nfreqs:] = matrices[0][2] @ fgmodes
+    A[Nfreqs:, :Nfreqs] = fgmodes.T.conj() @ matrices[0][2]
+    A[Nfreqs:, Nfreqs:] = fgmodes.T.conj() @ matrices[0][2] @ fgmodes
 
-    matlib[1][0] = A
-    matlib[1][1] = np.linalg.pinv(A)  # pseudo-inverse, to be used as a preconditioner
+    matrices[1][0] = A
+    matrices[1][1] = np.linalg.pinv(A)  # pseudo-inverse, to be used as a preconditioner
 
     # (1) Solve GCR equation to get EoR signal and foreground amplitude realisations
     cr = gcr_fgmodes(
@@ -313,7 +313,7 @@ def gibbs_sample_with_fg(
             Initial guess for the EoR signal frequency-frequency covariance.
             A better guess should result in faster convergence.
         fgmodes (array_like):
-            Foreground mode array, of shape (Nmodes, Nfreqs). This should be
+            Foreground mode array, of shape (Nfreqs, Nmodes). This should be
             derived from a PCA decomposition of a model foreground covariance
             matrix or similar.
         Ninv (array_like):
@@ -348,8 +348,8 @@ def gibbs_sample_with_fg(
 
     # Get shape of data/foreground modes
     Ntimes, Nfreqs = vis.shape
-    Nmodes = fgmodes.shape[0]
-    assert fgmodes.shape[1] == Nfreqs, "fgmodes must have shape (Nmodes, Nfreqs)"
+    Nmodes = fgmodes.shape[1]
+    assert fgmodes.shape[0] == Nfreqs, "fgmodes must have shape (Nfreqs, Nmodes)"
     if len(Ninv.shape) == 3:
         assert (
             Ninv.shape[0] == Ntimes
@@ -378,7 +378,6 @@ def gibbs_sample_with_fg(
             Ninv=Ninv,
             ps_prior=ps_prior,
             f0=None,
-            amps=True,
             nproc=nproc,
         )
 

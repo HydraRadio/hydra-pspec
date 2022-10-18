@@ -152,7 +152,7 @@ def lssa_fit_modes(d, freqs, invcov=None, fit_amp_phase=True, tau=None,
     """
     # Get shape of data etc.
     bandwidth = (freqs[-1] - freqs[0]) / 1e3 # assumed MHz, convert to GHz
-    assert d.size == invcov.shape[0] == invcov.shape[1] == freqs.size,
+    assert d.size == invcov.shape[0] == invcov.shape[1] == freqs.size, \
                "Data, inv. covariance, and freqs array must have same number of channels"
     
     # Calculate tau values
@@ -163,7 +163,7 @@ def lssa_fit_modes(d, freqs, invcov=None, fit_amp_phase=True, tau=None,
     if taper is None:
         taper = 1.
     else:
-        assert taper.size == freqs.size,
+        assert taper.size == freqs.size, \
                "'taper' must be evaluated at locations given in 'freqs'"
     
     # Log-likelihood (or log-posterior) function
