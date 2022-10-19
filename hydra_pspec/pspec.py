@@ -206,7 +206,8 @@ def gibbs_step_fgmodes(
             Array of complex visibilities for a single baseline, of shape
             `(Ntimes, Nfreqs)`.
         flags (array_like):
-            Array of flags (1 for unflagged, 0 for flagged).
+            Array of flags (1 for unflagged, 0 for flagged), with shape 
+            `(Nfreqs,)`.
         signal_S (array_like):
             Current value of the EoR signal frequency-frequency covariance.
         fgmodes (array_like):
@@ -239,6 +240,7 @@ def gibbs_step_fgmodes(
     Nvis, Nfreqs = vis.shape
     Nmodes = fgmodes.shape[1]
     Nparams = Nfreqs + Nmodes
+    assert flags.shape == (Nfreqs,), "`flags` array must have shape (Nfreqs,)"
 
     # Precompute 2D Fourier operator matrix
     fourier_op = utils.fourier_operator(Nfreqs)
@@ -308,7 +310,8 @@ def gibbs_sample_with_fg(
             Array of complex visibilities for a single baseline, of shape
             `(Ntimes, Nfreqs)`.
         flags (array_like):
-            Array of flags (1 for unflagged, 0 for flagged).
+            Array of flags (1 for unflagged, 0 for flagged), with shape 
+            `(Nfreqs,)`.
         S_initial (array_like):
             Initial guess for the EoR signal frequency-frequency covariance.
             A better guess should result in faster convergence.
@@ -349,6 +352,7 @@ def gibbs_sample_with_fg(
     # Get shape of data/foreground modes
     Ntimes, Nfreqs = vis.shape
     Nmodes = fgmodes.shape[1]
+    assert flags.shape == (Nfreqs,), "`flags` array must have shape (Nfreqs,)"
     assert fgmodes.shape[0] == Nfreqs, "fgmodes must have shape (Nfreqs, Nmodes)"
     if len(Ninv.shape) == 3:
         assert (
