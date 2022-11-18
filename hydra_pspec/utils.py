@@ -1,6 +1,7 @@
 
 import numpy as np
-
+from pyuvdata import UVData
+import pyuvdata.utils as uvutils
 
 def fourier_operator(n):
     """
@@ -76,3 +77,34 @@ def trim_flagged_channels(w, x):
         return x[w == 1.]
     else:
         return x[:,w == 1.][w == 1.,:]
+
+
+def form_pseudo_stokes_vis(uvd, convention=0.5):
+    """
+    Form pseudo-Stokes I visibilities from xx and yy.
+
+    Parameters:
+        uvd (pyuvdata.UVData):
+            UVData object containing XX and YY polarization visibilities.
+        convention (float):
+            Factor for getting pI from XX + YY, i.e.
+            pI = convention * (XX + YY).  Defaults to 0.5.
+
+    Returns:
+        uvd (pyuvdata.UVData):
+            UVData object containing pI visibilities.
+
+    """
+    assert isinstance(uvd, UVData), "uvd must be a pyuvdata.UVData object."
+
+    if uvutils.polstr2num("pI") not in uvd.polarization_array:
+        # Make pI visibilities from 0.5 * (XX + YY)
+        xx_pol_num = uvutils.polstr2num("xx")
+        yy_pol_num = uvutils.polstr2num("yy")
+        xpol_ind = np.where(uvd.polarization_array == xx_pol_num)[0]
+        ypol_ind = np.where(uvd.polarization_array == yy_pol_num)[0]
+        uvd.data_array[..., xpol_ind] += uvd.data_array[..., ypol_ind]
+        uvd.data_array *= convention
+        uvd.select(polarizations=["xx"])
+
+    return uvd
