@@ -5,25 +5,23 @@ import pylab as plt
 import scipy.special
 import argparse
 from pathlib import Path
-import ast
 import os
-import subprocess
 from datetime import datetime
 import time
 import sys
 
 from pyuvdata import UVData
-from hera_pspec.data import DATA_PATH
 from astropy import units
 from astropy.units import Quantity
 
-from hydra_pspec.utils import form_pseudo_stokes_vis
+from hydra_pspec.utils import (
+    form_pseudo_stokes_vis, filter_freqs, get_git_version_info
+)
 
 try:
     from mpi4py import MPI
 
     HAVE_MPI = True
-
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
     rank = comm.Get_rank()
@@ -63,6 +61,49 @@ parser.add_argument(
          " cannot contain spaces."
 )
 parser.add_argument(
+    "--flags",
+    type=str,
+    help="Path to a single file or a directory containing per-baseline flags. "
+         "Files must be readable by `np.load` and must have the same shape as "
+         "the visibilities for a single baseline being analyzed."
+)
+parser.add_argument(
+    "--flags_file",
+    type=str,
+    help="If passing a directory containing per-baseline flags to --flags, "
+         "--flags_file specifies the name of the file to load in each "
+         "baseline's subdirectory."
+)
+parser.add_argument(
+    "--noise",
+    type=str,
+    help="Path to a single file or a directory containing per-baseline noise. "
+         "Files must be readable by `np.load` and must have the same shape as "
+         "the visibilities for a single baseline being analyzed."
+)
+parser.add_argument(
+    "--noise_file",
+    type=str,
+    help="If passing a directory containing per-baseline flags to --noise, "
+         "--noise_file specifies the name of the file to load in each "
+         "baseline's subdirectory."
+)
+parser.add_argument(
+    "--nsamples",
+    type=str,
+    help="Path to a single file or a directory containing per-baseline "
+         "Nsamples arrays. Files must be readable by `np.load` and must have "
+         "the same shape as the visibilities for a single baseline being "
+         "analyzed."
+)
+parser.add_argument(
+    "--nsamples_file",
+    type=str,
+    help="If passing a directory containing per-baseline flags to --nsamples, "
+         "--nsamples_file specifies the name of the file to load in each "
+         "baseline's subdirectory."
+)
+parser.add_argument(
     "--Niter",
     type=int,
     default=100,
@@ -100,113 +141,13 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def filter_freqs(freq_str, freqs_in):
-    """
-    Returns a subset of `freqs_in` based on the frequency info in `freq_str`.
-
-    Parameters
-    ----------
-    freq_str : str
-        Can be either a single frequency, a comma delimited list of frequencies
-        (e.g. '100,110.4,150'), or a minimum and maximum frequency joined by
-        '-' (e.g. '100-200.3').  Cannot contain spaces.  Frequencies are
-        assumed to be in MHz.  If specifying individual frequencies and the
-        specified frequency is not explicitly present in `freqs_in`, the
-        closest frequency in `freqs_in` will be kept.
-    freqs_in : array-like
-        Frequencies in MHz in data to be filtered.
-
-    Returns
-    -------
-    freqs_out : astropy.units.Quantity
-        Masked frequency array containing only the frequencies from `freqs_in`
-        that match `freq_str`.
-
-    """
-    if not isinstance(freqs_in, Quantity):
-        freqs_in = Quantity(freqs_in, unit="MHz")
-    else:
-        freqs_in = freqs_in.to("MHz")
-    freqs_in_range_str = (
-        f"{freqs_in.min().value:.2f} - {freqs_in.max().value:.2f} MHz"
-    )
-
-    if '-' in freq_str:
-        min_freq, max_freq = freq_str.split('-')
-        min_freq = ast.literal_eval(min_freq) * units.MHz
-        max_freq = ast.literal_eval(max_freq) * units.MHz
-        freq_mask = np.logical_and(
-            freqs_in >= min_freq, freqs_in <= max_freq
+def check_shape(shape, d_shape, desc=""):
+        assert shape == d_shape, (
+            f"The {desc} array has shape {shape} which does not match the "
+            f"shape of the per-baseline data, {d_shape}."
         )
-        if np.sum(freq_mask) == 0:
-            print(
-                f"Frequency range {freq_str} MHz outside of the frequencies in"
-                f" `freqs_in`, {freqs_in_range_str}."
-            )
-    else:
-        if ',' in freq_str:
-            freqs = [ast.literal_eval(freq) for freq in freq_str.split(',')]
-        else:
-            freqs = [ast.literal_eval(freq_str)]
-        freqs = Quantity(freqs, unit='MHz')
-        freqs_in_range = np.array(
-            [freqs_in.min() <= freq <= freqs_in.max() for freq in freqs],
-            dtype=bool
-        )
-        if not np.all(freqs_in_range):
-            print(
-                f"Frequency(ies) {freqs[~freqs_in_range]} are not within the "
-                f"range of frequencies in `freqs_in`, {freqs_in_range_str}."
-            )
-        freqs_inds = [np.argmin(np.abs(freqs_in - freq)) for freq in freqs]
-        freq_mask = np.zeros(freqs_in.size, dtype=bool)
-        freq_mask[freqs_inds] = True
 
-    freqs_out = freqs_in[freq_mask]
-
-    return freqs_out
-
-def get_git_version_info(directory=None):
-    """
-    Get git version info from repository in `directory`.
-
-    Parameters
-    ----------
-    directory : str
-        Path to GitHub repository.  If None, uses one directory up from
-        __file__.
-
-    Returns
-    -------
-    version_info : dict
-        Dictionary containing git hash information.
-
-    """
-    cwd = os.getcwd()
-    if directory is None:
-        directory = Path(__file__).parent
-    os.chdir(directory)
-
-    version_info = {}
-    version_info['git_origin'] = subprocess.check_output(
-        ['git', 'config', '--get', 'remote.origin.url'],
-        stderr=subprocess.STDOUT)
-    version_info['git_hash'] = subprocess.check_output(
-        ['git', 'rev-parse', 'HEAD'],
-        stderr=subprocess.STDOUT)
-    version_info['git_description'] = subprocess.check_output(
-        ['git', 'describe', '--dirty', '--tag', '--always'])
-    version_info['git_branch'] = subprocess.check_output(
-        ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
-        stderr=subprocess.STDOUT)
-    for key in version_info.keys():
-        version_info[key] = version_info[key].decode('utf8').strip('\n')
-    
-    os.chdir(cwd)
-
-    return version_info
-
-def add_mtime_to_filename(fp, join_char='-'):
+def add_mtime_to_filename(fp, join_char="-"):
     """
     Appends the mtime to a filename before the file suffix.
 
@@ -246,10 +187,7 @@ def write_numpy_file(fp, arr, clobber=False):
 if rank == 0:
     # Load example data from HERA PSpec
     if not args.file_paths:
-        # dfiles = [
-        #     "zen.2458042.12552.xx.HH.uvXAA",
-        #     "zen.2458042.12552.xx.HH.uvXAA"
-        # ]
+        from hera_pspec.data import DATA_PATH
         dfiles = ["zen.2458042.12552.xx.HH.uvXAA"]
         file_paths = [os.path.join(DATA_PATH, df) for df in dfiles[:1]]
     else:
@@ -283,17 +221,35 @@ if rank == 0:
         + f"{freqs.max().to('MHz').value:.3f}MHz"
     )
 
+    bl_data_shape = (uvd.Ntimes, uvd.Nfreqs)
+    if args.flags:
+        flags_path = Path(args.flags)
+        flags_path_is_dir = flags_path.is_dir()
+        if not flags_path_is_dir:
+            flags = np.load(flags_path)
+            check_shape(flags.shape, bl_data_shape, desc="flags")
+    if args.noise:
+        noise_path = Path(args.noise)
+        noise_path_is_dir = noise_path.is_dir()
+        if not noise_path_is_dir:
+            noise = np.load(noise_path)
+            check_shape(noise.shape, bl_data_shape, desc="noise")
+    if args.nsamples:
+        nsamples_path = Path(args.nsamples)
+        nsamples_path_is_dir = nsamples_path.is_dir()
+        if not nsamples_path_is_dir:
+            nsamples = np.load(nsamples_path)
+            check_shape(nsamples.shape, bl_data_shape, desc="nsamples")
+
     if args.fg_eig_dir:
         fg_eig_dir = Path(args.fg_eig_dir)
     all_data_weights = []
     for i_bl, antpair in enumerate(antpairs):
+        bl_str = f"{antpair[0]}-{antpair[1]}"
+
         if args.fg_eig_dir:
             # fgmodes has shape (Nfreqs, Nfgmodes)
-            fgmodes = np.load(
-                fg_eig_dir
-                / f"{antpair[0]}-{antpair[1]}"
-                / f"evecs-{freq_str}.npy"
-            )
+            fgmodes = np.load(fg_eig_dir / bl_str / f"evecs-{freq_str}.npy")
             fgmodes = fgmodes[:, :args.Nfgmodes]
         else:
             # Generate approximate set of FG modes from Legendre polynomials
@@ -301,11 +257,32 @@ if rank == 0:
                 scipy.special.legendre(i)(np.linspace(-1., 1., freqs.size))
                 for i in range(args.Nfgmodes)
             ]).T
+        
+        d = uvd.get_data(antpair + ("xx",))
+        if args.flags and flags_path_is_dir:
+            bl_flags_path = flags_path / bl_str / args.flags_file
+            flags = np.load(bl_flags_path)
+            check_shape(flags.shape, d.shape, desc=f"flags ({bl_str})")
+
+        if args.nsamples and nsamples_path_is_dir:
+            bl_nsamples_path = nsamples_path / bl_str / args.nsamples_file
+            nsamples = np.load(bl_nsamples_path)
+            check_shape(nsamples.shape, d.shape, desc=f"nsamples ({bl_str})")
+        else:
+            nsamples = None
+
+        if args.noise and noise_path_is_dir:
+            bl_noise_path = noise_path / bl_str / args.noise_file
+            noise = np.load(bl_noise_path)
+            check_shape(noise.shape, d.shape, desc=f"noise ({bl_str})")
+            if nsamples is not None:
+                noise /= np.sqrt(nsamples)
+            d += noise
 
         bl_data_weights = {
             "bl": antpair,
-            "d": uvd.get_data(antpair + ("xx",)),
-            "w": uvd.get_flags(antpair + ("xx",)),
+            "d": d,
+            "w": flags,
             "fgmodes": fgmodes,
             "freq_str": freq_str
         }
@@ -349,7 +326,7 @@ signal_cr, signal_S, signal_ps, fg_amps = hp.pspec.gibbs_sample_with_fg(
     d,
     w[0],  # FIXME
     S_initial,
-    fgmodes,  # FIXME
+    fgmodes,
     Ninv,
     ps_prior,
     Niter=args.Niter,
