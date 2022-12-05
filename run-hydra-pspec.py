@@ -287,7 +287,7 @@ if rank == 0:
                 for i in range(args.Nfgmodes)
             ]).T
         
-        d = uvd.get_data(antpair + ("xx",))
+        d = uvd.get_data(antpair + ("xx",), force_copy=True)
         if args.flags and flags_path_is_dir:
             bl_flags_path = flags_path / bl_str / args.flags_file
             flags = np.load(bl_flags_path)
