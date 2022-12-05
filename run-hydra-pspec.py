@@ -1,7 +1,5 @@
 
 import numpy as np
-import hydra_pspec as hp
-import pylab as plt
 import scipy.special
 import argparse
 from pathlib import Path
@@ -14,6 +12,7 @@ from pyuvdata import UVData
 from astropy import units
 from astropy.units import Quantity
 
+import hydra_pspec as hp
 from hydra_pspec.utils import (
     form_pseudo_stokes_vis, filter_freqs, get_git_version_info
 )
@@ -42,6 +41,20 @@ parser.add_argument(
          "`pyuvdata.UVData.select`."
 )
 parser.add_argument(
+    "--sigcov0",
+    type=str,
+    help="Path to a single file or a directory containing a per-baseline "
+         "initial guess for the EoR signal covariance.  Files must be readable "
+         "by `np.load`."
+)
+parser.add_argument(
+    "--sigcov0_file",
+    type=str,
+    help="If passing a directory containing per-baseline initial guesses for "
+         "the EoR signal covariance to --sigcov0, --sigcov0_file specifies the"
+         " name of the file to load in each baseline's subdirectory."
+)
+parser.add_argument(
     "--Nfgmodes",
     type=int,
     default=8,
@@ -56,7 +69,7 @@ parser.add_argument(
     "--fg_eig_file",
     type=str,
     help="If passing a directory containing per-baseline FG eigenvectors to "
-         "--fg_eig_dir, --fg_eig_file specifies the name of hte file to load "
+         "--fg_eig_dir, --fg_eig_file specifies the name of the file to load "
          " in each baseline's subdirectory."
 )
 parser.add_argument(
@@ -225,7 +238,7 @@ if rank == 0:
     if args.ant_str:
         ant_str = args.ant_str
     else:
-        ant_str = ""
+        ant_str = "cross"
     uvd = UVData()
     if args.freq_range:
         uvd.read(file_paths[0], read_data=False)
@@ -250,6 +263,7 @@ if rank == 0:
     )
 
     bl_data_shape = (uvd.Ntimes, uvd.Nfreqs)
+    cov_ff_shape = (uvd.Nfreqs, uvd.Nfreqs)
     if args.flags:
         flags_path = Path(args.flags)
         flags_path_is_dir, flags = check_load_path(flags_path)
@@ -265,6 +279,11 @@ if rank == 0:
         nsamples_path_is_dir, nsamples = check_load_path(nsamples_path)
         if not nsamples_path_is_dir:
             check_shape(nsamples.shape, bl_data_shape, desc="nsamples")
+    if args.sigcov0:
+        sigcov0_path = Path(args.sigcov0)
+        sigcov0_path_is_dir, sigcov0 = check_load_path(sigcov0_path)
+        if not sigcov0_path_is_dir:
+            check_shape(sigcov0.shape, cov_ff_shape, desc="signal covariance")
 
     if args.fg_eig_dir:
         fg_eig_dir = Path(args.fg_eig_dir)
@@ -286,6 +305,14 @@ if rank == 0:
                 scipy.special.legendre(i)(np.linspace(-1., 1., freqs.size))
                 for i in range(args.Nfgmodes)
             ]).T
+        
+        if args.sigcov0 and sigcov0_path_is_dir:
+            bl_sigcov0_path = sigcov0_path / bl_str / args.sigcov0_file
+            sigcov0 = np.load(bl_sigcov0_path)
+            check_shape(
+                sigcov0.shape, cov_ff_shape,
+                desc=f"signal covariance ({bl_str})"
+            )
         
         d = uvd.get_data(antpair + ("xx",), force_copy=True)
         if args.flags and flags_path_is_dir:
@@ -317,6 +344,8 @@ if rank == 0:
             "fgmodes": fgmodes,
             "freq_str": freq_str
         }
+        if args.sigcov0:
+            bl_data_weights['S_initial'] = sigcov0
         all_data_weights.append(bl_data_weights)
 else:
     all_data_weights = None
@@ -333,7 +362,10 @@ Ntimes, Nfreqs = d.shape
 
 # Initial guess at EoR power spectrum
 # S_initial = np.eye(Nfreqs)
-S_initial = np.dot(d.conj().T, d) / Ntimes
+if 'S_initial' in data:
+    S_initial = data["S_initial"]
+else:
+    S_initial = np.eye(Nfreqs)
 
 # Simple guess for noise variance
 Ninv = np.eye(Nfreqs)
@@ -413,55 +445,56 @@ if rank == 0:
     print(f"Average evaluation time for {args.Niter} iterations: {times_avg}")
 
 # if rank == 0:
+#     import matplotlib.pyplot as plt
 #     data = dict(data)
 
-    # if Nbls > 1:
-    #     # TODO: How do we combine the PS once we gather them?  Simple average?
-    #     bl_avg_ps = np.zeros((Niter, Nfreqs))
-    #     for i_bl, antpair in enumerate(antpairs):
-    #         bl_avg_ps += data[antpair]["res"]["signal_ps"]
-    #     bl_avg_ps /= Nbls
+#     if Nbls > 1:
+#         # TODO: How do we combine the PS once we gather them?  Simple average?
+#         bl_avg_ps = np.zeros((Niter, Nfreqs))
+#         for i_bl, antpair in enumerate(antpairs):
+#             bl_avg_ps += data[antpair]["res"]["signal_ps"]
+#         bl_avg_ps /= Nbls
 
-    # df = np.diff(freqs).mean()
-    # delays = Quantity(
-    #     np.fft.fftshift(np.fft.fftfreq(Nfreqs, d=df.to("Hz").value)),
-    #     unit="s"
-    # )
+#     df = np.diff(freqs).mean()
+#     delays = Quantity(
+#         np.fft.fftshift(np.fft.fftfreq(Nfreqs, d=df.to("Hz").value)),
+#         unit="s"
+#     )
 
-    # nrows = Nbls + (Nbls > 1)
-    # plot_width = 5.0
-    # plot_height = 4.0
-    # figsize = (plot_width, plot_height * nrows)
-    # fig, axs = plt.subplots(nrows, 1, figsize=figsize)
-    # if nrows == 1:
-    #     axs = [axs]
+#     nrows = Nbls + (Nbls > 1)
+#     plot_width = 5.0
+#     plot_height = 4.0
+#     figsize = (plot_width, plot_height * nrows)
+#     fig, axs = plt.subplots(nrows, 1, figsize=figsize)
+#     if nrows == 1:
+#         axs = [axs]
 
-    # if Nbls > 1:
-    #     ax = axs[0]
-    #     ax.plot(
-    #         delays.to("ns").value,
-    #         np.fft.fftshift(bl_avg_ps, axes=(1,)).T,
-    #         color="k",
-    #         alpha=0.3
-    #     )
-    #     ax.set_title("Baseline Average")
+#     if Nbls > 1:
+#         ax = axs[0]
+#         ax.plot(
+#             delays.to("ns").value,
+#             np.fft.fftshift(bl_avg_ps, axes=(1,)).T,
+#             color="k",
+#             alpha=0.3
+#         )
+#         ax.set_title("Baseline Average")
 
-    # for i_bl, bl in enumerate(antpairs):
-    #     if Nbls > 1:
-    #         i_ax = i_bl + 1
-    #     else:
-    #         i_ax = i_bl
-    #     ax = axs[i_ax]
-    #     ax.plot(
-    #         delays.to("ns").value,
-    #         np.fft.fftshift(data[bl]["res"]["signal_ps"], axes=(1,)).T,
-    #         color="k",
-    #         alpha=0.3
-    #     )
-    #     ax.set_title(f"({bl[0]}, {bl[1]})")
+#     for i_bl, bl in enumerate(antpairs):
+#         if Nbls > 1:
+#             i_ax = i_bl + 1
+#         else:
+#             i_ax = i_bl
+#         ax = axs[i_ax]
+#         ax.plot(
+#             delays.to("ns").value,
+#             np.fft.fftshift(data[bl]["res"]["signal_ps"], axes=(1,)).T,
+#             color="k",
+#             alpha=0.3
+#         )
+#         ax.set_title(f"({bl[0]}, {bl[1]})")
     
-    # for i_ax, ax in enumerate(axs):
-    #     ax.set_ylabel(r"Delay Power Spectrum")
-    # axs[-1].set_xlabel(r"Delay [ns]")
+#     for i_ax, ax in enumerate(axs):
+#         ax.set_ylabel(r"Delay Power Spectrum")
+#     axs[-1].set_xlabel(r"Delay [ns]")
 
-    # fig.tight_layout()
+#     fig.tight_layout()
