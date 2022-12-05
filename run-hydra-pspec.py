@@ -205,6 +205,7 @@ if rank == 0:
         # uvd.freq_array[0] might not work with future versions of pyuvdata
         freqs_in = Quantity(uvd.freq_array[0], unit="Hz")
         freqs_to_keep = filter_freqs(args.freq_range, freqs_in)
+        freqs_to_keep = freqs_to_keep.to("Hz").value
     else:
         freqs_to_keep = None
     uvd.read(file_paths, ant_str=ant_str, frequencies=freqs_to_keep)
