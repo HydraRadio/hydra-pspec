@@ -53,6 +53,13 @@ parser.add_argument(
     help="Path to directory containing per-baseline FG eigenvector arrays."
 )
 parser.add_argument(
+    "--fg_eig_file",
+    type=str,
+    help="If passing a directory containing per-baseline FG eigenvectors to "
+         "--fg_eig_dir, --fg_eig_file specifies the name of hte file to load "
+         " in each baseline's subdirectory."
+)
+parser.add_argument(
     "--freq_range",
     type=str,
     help="Frequencies to use in the data.  Can be either a single frequency, "
@@ -183,6 +190,26 @@ def write_numpy_file(fp, arr, clobber=False):
         add_mtime_to_filename(fp)
     np.save(fp, arr)
 
+def check_load_path(fp):
+        """
+        Check if file path `fp` points to a file (load) or directory (pass).
+
+        Parameters
+        ----------
+        fp : str or Path
+            Path to file or directory.
+
+        """
+        if not isinstance(fp, Path):
+            fp = Path(fp)
+        
+        fp_is_dir = fp.is_dir()
+        if fp_is_dir:
+            return fp_is_dir, None
+        else:
+            data = np.load(fp)
+            return fp_is_dir, data
+
 
 if rank == 0:
     # Load example data from HERA PSpec
@@ -225,21 +252,18 @@ if rank == 0:
     bl_data_shape = (uvd.Ntimes, uvd.Nfreqs)
     if args.flags:
         flags_path = Path(args.flags)
-        flags_path_is_dir = flags_path.is_dir()
+        flags_path_is_dir, flags = check_load_path(flags_path)
         if not flags_path_is_dir:
-            flags = np.load(flags_path)
             check_shape(flags.shape, bl_data_shape, desc="flags")
     if args.noise:
         noise_path = Path(args.noise)
-        noise_path_is_dir = noise_path.is_dir()
+        noise_path_is_dir, noise = check_load_path(noise_path)
         if not noise_path_is_dir:
-            noise = np.load(noise_path)
             check_shape(noise.shape, bl_data_shape, desc="noise")
     if args.nsamples:
         nsamples_path = Path(args.nsamples)
-        nsamples_path_is_dir = nsamples_path.is_dir()
+        nsamples_path_is_dir, nsamples = check_load_path(nsamples_path)
         if not nsamples_path_is_dir:
-            nsamples = np.load(nsamples_path)
             check_shape(nsamples.shape, bl_data_shape, desc="nsamples")
 
     if args.fg_eig_dir:
@@ -250,7 +274,11 @@ if rank == 0:
 
         if args.fg_eig_dir:
             # fgmodes has shape (Nfreqs, Nfgmodes)
-            fgmodes = np.load(fg_eig_dir / bl_str / f"evecs-{freq_str}.npy")
+            if not args.fg_eig_file:
+                fgmodes_path = fg_eig_dir / bl_str / f"evecs-{freq_str}.npy"
+            else:
+                fgmodes_path = fg_eig_dir / bl_str / args.fg_eig_file
+            fgmodes = np.load(fgmodes_path)
             fgmodes = fgmodes[:, :args.Nfgmodes]
         else:
             # Generate approximate set of FG modes from Legendre polynomials
