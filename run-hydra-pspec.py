@@ -382,7 +382,7 @@ else:
     out_dir = "./"
 out_dir = Path(out_dir)
 if rank == 0:
-    print(f"\nWriting output(s) to {out_dir}", end="\n\n")
+    print(f"\nWriting output(s) to {out_dir.absolute()}", end="\n\n")
 out_path = (
     out_dir
     / f"{bl[0]}-{bl[1]}"
