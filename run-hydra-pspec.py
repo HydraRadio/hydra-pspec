@@ -151,8 +151,9 @@ parser.add_argument(
 parser.add_argument(
     "--Nproc",
     type=int,
-    default=1,
-    help="Number of threads per MPI process."
+    default=0,
+    help="Number of threads per MPI process.  Defaults to the maximum number "
+         "of cores available divided by the number of baselines."
 )
 parser.add_argument(
     "--out_dir",
@@ -275,6 +276,15 @@ if rank == 0:
         + f"{freqs.max().to('MHz').value:.3f}MHz"
     )
 
+    if args.Nproc == 0:
+        ncores = len(os.sched_getaffinity(0))  # number of cores available
+        nproc = ncores // Nbls  # number of cores per MPI task
+        if nproc == 0:
+            nproc = 1
+    else:
+        nproc = args.Nproc
+    print(f'nproc = {nproc}', end='\n\n')
+
     bl_data_shape = (uvd.Ntimes, uvd.Nfreqs)
     cov_ff_shape = (uvd.Nfreqs, uvd.Nfreqs)
     if args.flags:
@@ -367,7 +377,8 @@ if rank == 0:
             "d": d,
             "w": flags,
             "fgmodes": fgmodes,
-            "freq_str": freq_str
+            "freq_str": freq_str,
+            "nproc": nproc
         }
         if args.sigcov0:
             bl_data_weights["S_initial"] = sigcov0
@@ -384,6 +395,7 @@ d = data["d"]
 w = ~data["w"]
 fgmodes = data["fgmodes"]
 freq_str = data["freq_str"]
+nproc = data["nproc"]
 
 Ntimes, Nfreqs = d.shape
 
@@ -424,7 +436,7 @@ signal_cr, signal_S, signal_ps, fg_amps = hp.pspec.gibbs_sample_with_fg(
     Niter=args.Niter,
     seed=None,
     verbose=args.verbose,
-    nproc=args.Nproc,
+    nproc=nproc,
 )
 elapsed = time.time() - start
 
