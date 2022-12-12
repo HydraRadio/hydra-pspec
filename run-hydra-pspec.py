@@ -109,6 +109,19 @@ parser.add_argument(
          "baseline's subdirectory."
 )
 parser.add_argument(
+    "--noise_cov",
+    type=str,
+    help="Path to a single file or a directory containing per-baseline noise "
+         "covariance matrices.  Files must be readable by `np.load`."
+)
+parser.add_argument(
+    "--noise_cov_file",
+    type=str,
+    help="If passing a directory containint per-baseline noise covariance "
+         "matrices to --noise_cov, --noise_cov_file specifies the name of the "
+         "file to load in each baseline's subdirectory."
+)
+parser.add_argument(
     "--nsamples",
     type=str,
     help="Path to a single file or a directory containing per-baseline "
@@ -284,6 +297,11 @@ if rank == 0:
         sigcov0_path_is_dir, sigcov0 = check_load_path(sigcov0_path)
         if not sigcov0_path_is_dir:
             check_shape(sigcov0.shape, cov_ff_shape, desc="signal covariance")
+    if args.noise_cov:
+        noise_cov_path = Path(args.noise_cov)
+        noise_cov_path_is_dir, noise_cov = check_load_path(noise_cov_path)
+        if not noise_cov_path_is_dir:
+            check_shape(noise_cov.shape, cov_ff_shape, desc="noise covariance")
 
     if args.fg_eig_dir:
         fg_eig_dir = Path(args.fg_eig_dir)
@@ -312,6 +330,13 @@ if rank == 0:
             check_shape(
                 sigcov0.shape, cov_ff_shape,
                 desc=f"signal covariance ({bl_str})"
+            )
+        if args.noise_cov and noise_cov_path_is_dir:
+            bl_noise_cov_path = noise_cov_path / bl_str / args.noise_cov_file
+            noise_cov = np.load(bl_noise_cov_path)
+            check_shape(
+                noise_cov.shape, cov_ff_shape,
+                desc=f"noise covariance ({bl_str})"
             )
         
         d = uvd.get_data(antpair + ("xx",), force_copy=True)
@@ -345,7 +370,9 @@ if rank == 0:
             "freq_str": freq_str
         }
         if args.sigcov0:
-            bl_data_weights['S_initial'] = sigcov0
+            bl_data_weights["S_initial"] = sigcov0
+        if args.noise_cov:
+            bl_data_weights["N"] = noise_cov
         all_data_weights.append(bl_data_weights)
 else:
     all_data_weights = None
@@ -361,14 +388,16 @@ freq_str = data["freq_str"]
 Ntimes, Nfreqs = d.shape
 
 # Initial guess at EoR power spectrum
-# S_initial = np.eye(Nfreqs)
-if 'S_initial' in data:
+if "S_initial" in data:
     S_initial = data["S_initial"]
 else:
     S_initial = np.eye(Nfreqs)
 
-# Simple guess for noise variance
-Ninv = np.eye(Nfreqs)
+if "N" in data:
+    Ninv = np.linalg.inv(data["N"])
+else:
+    # Simple guess for noise variance
+    Ninv = np.eye(Nfreqs)
 
 # Power spectrum prior
 # This has shape (2, Ndelays). The first dimension is for the upper and
