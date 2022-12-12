@@ -459,7 +459,7 @@ if rank == 0:
 out_path = (
     out_dir
     / f"{bl[0]}-{bl[1]}"
-    / f"results-{freq_str}.npy"
+    / f"results-{freq_str}-Niter-{args.Niter}.npy"
 )
 out_path.parent.mkdir(exist_ok=True)
 try:
