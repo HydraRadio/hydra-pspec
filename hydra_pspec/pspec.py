@@ -38,7 +38,10 @@ def sample_S(s=None, sk=None, prior=None):
     Nobs, Nfreqs = sk.shape
 
     beta = np.sum(sk * sk.conj(), axis=0).real
-    alpha = Nobs / 2.0 - 1.0
+    # The shape parameter (alpha) differs from that used in Eriksen et al. 2008
+    # i.e. `alpha = Nobs/2 - 1` because our data vector is complex and has
+    # twice as many numbers as a purely real data vector
+    alpha = Nobs - 1.0
 
     x = np.zeros(Nfreqs)
     for i in range(Nfreqs):
@@ -279,7 +282,8 @@ def gibbs_step_fgmodes(
     # (2) Sample EoR signal power spectrum (and also convert to equivalent
     # covariance matrix sample)
     ps_sample = sample_S(s=signal_cr, prior=ps_prior)
-    S_sample = covariance_from_pspec(ps_sample / (2 * Nfreqs**2), fourier_op)
+    # The factor of 1/Nfreqs**2 here is an FFT normalization
+    S_sample = covariance_from_pspec(ps_sample / Nfreqs**2, fourier_op)
 
     # Return samples
     return signal_cr, S_sample, ps_sample, fg_amps
