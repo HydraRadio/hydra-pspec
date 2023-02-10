@@ -91,7 +91,7 @@ def trim_flagged_channels(w, x):
         return x[:,w == 1.][w == 1.,:]
 
 
-def form_pseudo_stokes_vis(uvd, convention=0.5):
+def form_pseudo_stokes_vis(uvd, convention=1.0):
     """
     Form pseudo-Stokes I visibilities from xx and yy.
 
@@ -100,7 +100,7 @@ def form_pseudo_stokes_vis(uvd, convention=0.5):
             UVData object containing XX and YY polarization visibilities.
         convention (float):
             Factor for getting pI from XX + YY, i.e.
-            pI = convention * (XX + YY).  Defaults to 0.5.
+            pI = convention * (XX + YY).  Defaults to 1.0.
 
     Returns:
         uvd (pyuvdata.UVData):
@@ -110,7 +110,6 @@ def form_pseudo_stokes_vis(uvd, convention=0.5):
     assert isinstance(uvd, UVData), "uvd must be a pyuvdata.UVData object."
 
     if uvutils.polstr2num("pI") not in uvd.polarization_array:
-        # Make pI visibilities from 0.5 * (XX + YY)
         xx_pol_num = uvutils.polstr2num("xx")
         yy_pol_num = uvutils.polstr2num("yy")
         xpol_ind = np.where(uvd.polarization_array == xx_pol_num)[0]
