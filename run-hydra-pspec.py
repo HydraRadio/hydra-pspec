@@ -1,13 +1,14 @@
 
 import numpy as np
 import scipy.special
-import argparse
 from pathlib import Path
 import os
 from datetime import datetime
 import time
 import sys
 
+from jsonargparse import ArgumentParser, ActionConfigFile
+from jsonargparse.typing import path_type, Path, Path_fr, Path_dw
 from pyuvdata import UVData
 from astropy import units
 from astropy.units import Quantity
@@ -32,10 +33,11 @@ except ImportError:
     sys.exit()
 
 
-parser = argparse.ArgumentParser()
+parser = ArgumentParser()
 parser.add_argument(
     "--ant_str",
     type=str,
+    default="cross",
     help="Comma delimited list of antenna pairs joined by underscores, e.g. "
          "'1_11,12_14'.  Used via the `ant_str` kwarg in "
          "`pyuvdata.UVData.select`."
@@ -144,6 +146,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "-v", "--verbose",
+    dest="verbose",
     action="store_true",
     default=False,
     help="Display debug/timing statements."
@@ -157,7 +160,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--out_dir",
-    type=str,
+    type=Path_dw,
     help="Path to directory for writing output(s)."
 )
 parser.add_argument(
@@ -168,9 +171,13 @@ parser.add_argument(
 )
 parser.add_argument(
     "file_paths",
-    type=str,
+    type=Path_fr,
     nargs="+",
     help="Path(s) to UVData compatible visibility file."
+)
+parser.add_argument(
+    '--config',
+    action=ActionConfigFile
 )
 args = parser.parse_args()
 
@@ -249,10 +256,6 @@ if rank == 0:
     nfiles = len(file_paths)
     print(f"\nReading {nfiles} file(s)", end="\n\n")
 
-    if args.ant_str:
-        ant_str = args.ant_str
-    else:
-        ant_str = "cross"
     uvd = UVData()
     if args.freq_range:
         uvd.read(file_paths[0], read_data=False)
