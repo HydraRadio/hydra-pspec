@@ -265,7 +265,7 @@ if rank == 0:
         freqs_to_keep = freqs_to_keep.to("Hz").value
     else:
         freqs_to_keep = None
-    uvd.read(file_paths, ant_str=ant_str, frequencies=freqs_to_keep)
+    uvd.read(file_paths, ant_str=args.ant_str, frequencies=freqs_to_keep)
     uvd.conjugate_bls()
     if args.file_paths:
         uvd = form_pseudo_stokes_vis(uvd)
