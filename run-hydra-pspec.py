@@ -8,7 +8,7 @@ import time
 import sys
 
 from jsonargparse import ArgumentParser, ActionConfigFile
-from jsonargparse.typing import path_type, Path, Path_fr, Path_dw
+from jsonargparse.typing import Path_fr, Path_dw
 from pyuvdata import UVData
 from astropy import units
 from astropy.units import Quantity
