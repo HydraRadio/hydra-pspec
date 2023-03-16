@@ -107,10 +107,9 @@ def gcr_fgmodes_1d(vis, w, matrices, fgmodes, f0=None):
 
     # Extract precomputed matrices needed by the linear system
     Sh = matrices[0][0]
-    Si = matrices[0][1]
+    S = matrices[0][1]
     Ni = matrices[0][2]
-    Sih = matrices[0][3]
-    Nih = matrices[0][4]
+    Nih = matrices[0][3]
     A = matrices[1][0]
     Ai = matrices[1][1]
 
@@ -121,7 +120,7 @@ def gcr_fgmodes_1d(vis, w, matrices, fgmodes, f0=None):
 
     # Construct RHS vector
     b = np.zeros((Nfreqs + Nmodes, 1), dtype=complex)
-    b[:Nfreqs] = Ni @ (w * d).T + Sih @ oma + Nih @ omb
+    b[:Nfreqs] = S @ Ni @ (w * d).T + Sh @ oma + S @ Nih @ omb
     b[Nfreqs:] = fgmodes.T.conj() @ (Ni @ (w * d).T + Nih @ omb)
 
     # Run CG solver, preconditioned by M=Ai
@@ -250,20 +249,19 @@ def gibbs_step_fgmodes(
 
     # Construct matrix structure
     matrices = [0, 0]
-    matrices[0] = np.zeros((5, Nfreqs, Nfreqs), dtype=complex)
+    matrices[0] = np.zeros((4, Nfreqs, Nfreqs), dtype=complex)
     matrices[1] = np.zeros((2, Nparams, Nparams), dtype=complex)
 
     # Construct necessary operators for GCR
     matrices[0][0] = sp.linalg.sqrtm(signal_S)  # Sh
-    matrices[0][1] = np.linalg.inv(signal_S)  # Si
+    matrices[0][1] = signal_S.copy()  # S
     matrices[0][2] = flags.T * Ninv * flags  # Ni # FIXME
-    matrices[0][3] = sp.linalg.sqrtm(matrices[0][1])  # Sih
-    matrices[0][4] = sp.linalg.sqrtm(matrices[0][2])  # Nih
+    matrices[0][3] = sp.linalg.sqrtm(matrices[0][2])  # Nih
 
     # Construct operator matrix
     A = np.zeros((Nparams, Nparams), dtype=complex)
-    A[:Nfreqs, :Nfreqs] = matrices[0][1] + matrices[0][2]  # Si + Ni
-    A[:Nfreqs, Nfreqs:] = matrices[0][2] @ fgmodes
+    A[:Nfreqs, :Nfreqs] = np.eye(Nfreqs) + matrices[0][1] @ matrices[0][2]  # 1 + S @ Ni
+    A[:Nfreqs, Nfreqs:] = matrices[0][1] @ matrices[0][2] @ fgmodes
     A[Nfreqs:, :Nfreqs] = fgmodes.T.conj() @ matrices[0][2]
     A[Nfreqs:, Nfreqs:] = fgmodes.T.conj() @ matrices[0][2] @ fgmodes
 
