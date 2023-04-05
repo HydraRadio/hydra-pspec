@@ -1,5 +1,6 @@
 
 import numpy as np
+import scipy
 import scipy.special
 from pathlib import Path
 import os
@@ -9,7 +10,9 @@ import sys
 
 from jsonargparse import ArgumentParser, ActionConfigFile
 from jsonargparse.typing import Path_fr, Path_dw
+import pyuvdata
 from pyuvdata import UVData
+import astropy
 from astropy import units
 from astropy.units import Quantity
 
@@ -145,6 +148,12 @@ parser.add_argument(
     help="Number of iterations."
 )
 parser.add_argument(
+    "--seed",
+    type=int,
+    default=None,
+    help="Random seed for `numpy.random.seed`."
+)
+parser.add_argument(
     "-v", "--verbose",
     dest="verbose",
     action="store_true",
@@ -162,6 +171,12 @@ parser.add_argument(
     "--out_dir",
     type=Path_dw,
     help="Path to directory for writing output(s)."
+)
+parser.add_argument(
+    "--filename",
+    type=str,
+    help="Filename for output(s).  Defaults to "
+         "f'results-{freqs.min()}-{freqs.max()}MHz-Niter-{Niter}.npy'."
 )
 parser.add_argument(
     "--clobber",
@@ -437,7 +452,7 @@ signal_cr, signal_S, signal_ps, fg_amps = hp.pspec.gibbs_sample_with_fg(
     Ninv,
     ps_prior,
     Niter=args.Niter,
-    seed=None,
+    seed=args.seed,
     verbose=args.verbose,
     nproc=nproc,
 )
@@ -459,12 +474,24 @@ else:
 out_dir = Path(out_dir)
 if rank == 0:
     print(f"\nWriting output(s) to {out_dir.absolute()}", end="\n\n")
+if not args.filename:
+    out_file = f"results-{freq_str}-Niter-{args.Niter}.npy"
+else:
+    out_file = args.filename
+    if not out_file.endswith('.npy'):
+        out_file += '.npy'
 out_path = (
     out_dir
     / f"{bl[0]}-{bl[1]}"
-    / f"results-{freq_str}-Niter-{args.Niter}.npy"
+    / out_file
 )
 out_path.parent.mkdir(exist_ok=True)
+pkg_versions = {
+    "numpy": np.__version__,
+    "scipy": scipy.__version__,
+    "pyuvdata": pyuvdata.__version__,
+    "astropy": astropy.__version__
+}
 try:
     git_info = get_git_version_info()
 except:
@@ -472,6 +499,7 @@ except:
 out_dict = {
     "res": results_dict,
     "git": git_info,
+    "pkgs": pkg_versions,
     "args": args
 }
 write_numpy_file(out_path, out_dict, clobber=args.clobber)
