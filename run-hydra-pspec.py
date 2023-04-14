@@ -142,6 +142,30 @@ parser.add_argument(
          "baseline's subdirectory."
 )
 parser.add_argument(
+    "--n_ps_prior_bins",
+    type=int,
+    default=3,
+    help="Sets the number of bins to the left and right of the delay=0 mode "
+         "bound by the prior (set via --ps_prior_lo and --ps_prior_hi).  If "
+         "n_ps_prior_bins is set to 3 (default), then 3 bins to the left and"
+         " 3 bins to the right of the delay=0 bin will be affected by the "
+         "prior."
+)
+parser.add_argument(
+    "--ps_prior_lo",
+    type=float,
+    default=0.0,
+    help="Sets the lower bound of the prior on the delay power spectrum. "
+         "Defaults to 0 which corresponds to no lower bound."
+)
+parser.add_argument(
+    "--ps_prior_hi",
+    type=float,
+    default=0.0,
+    help="Sets the upper bound of the prior on the delay power spectrum. "
+         "Defaults to 0 which corresponds to no upper bound."
+)
+parser.add_argument(
     "--Niter",
     type=int,
     default=100,
@@ -435,8 +459,13 @@ else:
 # set to zero, no prior is applied. Otherwise, the solution is restricted
 # to be within the range ps_prior[1] < soln < ps_prior[0].
 ps_prior = np.zeros((2, Nfreqs))
-ps_prior[0, Nfreqs//2-3:Nfreqs//2+3] = 0.1
-ps_prior[1, Nfreqs//2-3:Nfreqs//2+3] = -0.1
+if args.ps_prior_lo != 0 or args.ps_prior_hi != 0:
+    ps_prior_inds = slice(
+        Nfreqs//2 - args.n_ps_prior_bins,
+        Nfreqs//2 + args.n_ps_prior_bins
+    )
+    ps_prior[0, ps_prior_inds] = args.ps_prior_hi
+    ps_prior[1, ps_prior_inds] = args.ps_prior_lo
 
 # Run Gibbs sampler
 # signal_cr = (Niter, Ntimes, Nfreqs)
