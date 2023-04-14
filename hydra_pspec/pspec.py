@@ -24,7 +24,8 @@ def sample_S(s=None, sk=None, prior=None):
 
         sk (array_like):
             A set of Fourier-space samples of the field, of shape
-            `(Ntimes, Nfreq)`.
+            `(Ntimes, Nfreq)`.  The monopole is expected to be at the center
+            of the frequency axis, i.e. the frequency axis has been fftshifted.
 
         prior (array_like):
             Array of delta function prior values, used to set certain modes to a
@@ -34,7 +35,10 @@ def sample_S(s=None, sk=None, prior=None):
         raise ValueError("Must pass in s (real space) or sk (Fourier space) vector.")
 
     if sk is None:
-        sk = np.fft.fft(s, axis=-1)
+        axes = (1,)
+        sk = np.fft.ifftshift(s, axes=axes)
+        sk = np.fft.fftn(sk, axes=axes)
+        sk = np.fft.fftshift(sk, axes=axes)
     Nobs, Nfreqs = sk.shape
 
     beta = np.sum(sk * sk.conj(), axis=0).real

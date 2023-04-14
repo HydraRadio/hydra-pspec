@@ -14,20 +14,29 @@ def fourier_operator(n):
     """
     Fourier operator for matrix side length n.
 
+    Multiplying a data vector by this matrix operator is equivalent to running
+    the following code:
+    ```
+    data = ...
+    # ifftshift and fftshift are interchangeable
+    data_fft = numpy.fft.ifftshift(data)
+    data_fft = numpy.fft.fft(data_fft)
+    data_fft = numpy.fft.fftshift(data_fft)
+    ```
+
     Parameters:
     	n (int):
     		Length of the data that the operator will be applied to.
 
     Returns:
-    	F (array_like):
+    	fourier_op (array_like):
     		Complex Fourier operator matrix of shape `(n, n)`.
     """
-    F = np.zeros((n,n), dtype=complex)
-    for i in range(n):
-        y = np.zeros(n)
-        y[i] = 1
-        F[i] = np.fft.fft(y)
-    return F
+    i_x = (np.arange(n) - n//2).reshape(1, -1)
+    i_k = (np.arange(n) - n//2).reshape(-1, 1)
+    fourier_op = np.exp(-2*np.pi*1j * (i_k * i_x / n))
+
+    return fourier_op
 
 
 def naive_pspec(data, subtract_mean=True, taper=True):
