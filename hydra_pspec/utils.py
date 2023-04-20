@@ -9,6 +9,7 @@ import ast
 import subprocess
 import os
 from pathlib import Path
+from datetime import datetime
 
 def fourier_operator(n):
     """
@@ -236,3 +237,41 @@ def get_git_version_info(directory=None):
     os.chdir(cwd)
 
     return version_info
+
+
+def add_mtime_to_filename(fp, join_char="-"):
+    """
+    Appends the mtime to a filename before the file suffix.
+
+    Modifies the existing file on disk.
+
+    Parameters
+    ----------
+    fp : str or Path
+        Path to file.
+
+    """
+    if not isinstance(fp, Path):
+        fp = Path(fp)
+    mtime = datetime.fromtimestamp(os.path.getmtime(fp))
+    mtime = mtime.isoformat()
+    fp.rename(fp.with_stem(f"{fp.stem}{join_char}{mtime}"))
+
+
+def write_numpy_file(fp, arr, clobber=False):
+    """
+    Write a numpy file to disk with checks for existing files.
+
+    Parameters
+    ----------
+    fp : str or Path
+        Path to file.
+    clobber : bool
+        If True, overwrite file if it exists.
+
+    """
+    if not isinstance(fp, Path):
+        fp = Path(fp)
+    if fp.exists() and not clobber:
+        add_mtime_to_filename(fp)
+    np.save(fp, arr)

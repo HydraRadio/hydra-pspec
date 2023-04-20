@@ -302,6 +302,10 @@ def gibbs_sample_with_fg(
     seed=None,
     verbose=True,
     nproc=1,
+    write_Niter=100,
+    out_path=None,
+    out_dict=None,
+    clobber=False
 ):
     """
     Run a Gibbs chain on data for a single baseline, using a foreground model
@@ -339,6 +343,15 @@ def gibbs_sample_with_fg(
             If True, output basic timing stats about each iteration.
         nproc (int):
             Number of processes to use for parallelised functions.
+        write_Niter (int):
+            Number of iterations between output file writing.
+        out_path (str or Path):
+            File path where output will be saved to disk.
+        out_dict (dict):
+            Dictionary containing samples, git version info, and analysis args
+            to be written to disk if out_path is not None.
+        clobber (bool):
+            Clobber existing files.
 
     Returns:
         signal_cr (array_like):
@@ -390,5 +403,36 @@ def gibbs_sample_with_fg(
             f0=None,
             nproc=nproc,
         )
+
+        if (i+1) % write_Niter == 0:
+            # Write current set of samples to disk
+            if out_path is not None:
+                if out_dict is None:
+                    out_dict = {}
+                out_dict.update({
+                    "samples": {
+                        "signal_cr": signal_cr[:i+1],
+                        "signal_S": signal_S,
+                        "signal_ps": signal_ps[:i+1],
+                        "fg_amps": fg_amps[:i+1]
+                    }
+                })
+                if (i+1) == 2*write_Niter:
+                    # Don't initially clobber any files if clobber = False
+                    # Only clobber after writing to disk for the 1st time
+                    clobber = True
+                utils.write_numpy_file(out_path, out_dict, clobber=clobber)
+    
+    if out_path is not None:
+        # Write all samples to disk
+        out_dict.update({
+            "samples": {
+                "signal_cr": signal_cr,
+                "signal_S": signal_S,
+                "signal_ps": signal_ps,
+                "fg_amps": fg_amps
+            }
+        })
+        utils.write_numpy_file(out_path, out_dict, clobber=True)
 
     return signal_cr, signal_S, signal_ps, fg_amps

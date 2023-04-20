@@ -3,16 +3,14 @@ import numpy as np
 import scipy
 import scipy.special
 from pathlib import Path
+from pprint import pprint
 import os
-from datetime import datetime
 import time
 import sys
 
 from jsonargparse import ArgumentParser, ActionConfigFile
 from jsonargparse.typing import Path_fr, Path_dw
-import pyuvdata
 from pyuvdata import UVData
-import astropy
 from astropy import units
 from astropy.units import Quantity
 
@@ -209,6 +207,14 @@ parser.add_argument(
     help="Clobber existing files."
 )
 parser.add_argument(
+    "--write_Niter",
+    type=int,
+    default=100,
+    help="Number of iterations between output file writing.  Smaller numbers "
+         "yield more overhead for I/O.  Larger numbers risk losing more "
+         "samples if a job fails or times out."
+)
+parser.add_argument(
     "file_paths",
     type=Path_fr,
     nargs="+",
@@ -226,42 +232,6 @@ def check_shape(shape, d_shape, desc=""):
             f"The {desc} array has shape {shape} which does not match the "
             f"shape of the per-baseline data, {d_shape}."
         )
-
-def add_mtime_to_filename(fp, join_char="-"):
-    """
-    Appends the mtime to a filename before the file suffix.
-
-    Modifies the existing file on disk.
-
-    Parameters
-    ----------
-    fp : str or Path
-        Path to file.
-
-    """
-    if not isinstance(fp, Path):
-        fp = Path(fp)
-    mtime = datetime.fromtimestamp(os.path.getmtime(fp))
-    mtime = mtime.isoformat()
-    fp.rename(fp.with_stem(f"{fp.stem}{join_char}{mtime}"))
-
-def write_numpy_file(fp, arr, clobber=False):
-    """
-    Write a numpy file to disk with checks for existing files.
-
-    Parameters
-    ----------
-    fp : str or Path
-        Path to file.
-    clobber : bool
-        If True, overwrite file if it exists.
-
-    """
-    if not isinstance(fp, Path):
-        fp = Path(fp)
-    if fp.exists() and not clobber:
-        add_mtime_to_filename(fp)
-    np.save(fp, arr)
 
 def check_load_path(fp):
         """
@@ -285,8 +255,12 @@ def check_load_path(fp):
 
 
 if rank == 0:
-    # Load example data from HERA PSpec
+    if "config" in args.__dict__:
+        print(f"Loading config file {str(args.config[0])}", end="\n\n")
+    pprint(args.__dict__)
+
     if not args.file_paths:
+        # Load example data from HERA PSpec
         from hera_pspec.data import DATA_PATH
         dfiles = ["zen.2458042.12552.xx.HH.uvXAA"]
         file_paths = [os.path.join(DATA_PATH, df) for df in dfiles[:1]]
@@ -467,35 +441,7 @@ if args.ps_prior_lo != 0 or args.ps_prior_hi != 0:
     ps_prior[0, ps_prior_inds] = args.ps_prior_hi
     ps_prior[1, ps_prior_inds] = args.ps_prior_lo
 
-# Run Gibbs sampler
-# signal_cr = (Niter, Ntimes, Nfreqs)
-# signal_S = (Nfreqs, Nfreqs)
-# signal_ps = (Niter, Nfreqs)
-# fg_amps = (Niter, Ntimes, Nfgmodes)
-start = time.time()
-signal_cr, signal_S, signal_ps, fg_amps = hp.pspec.gibbs_sample_with_fg(
-    d,
-    w[0],  # FIXME
-    S_initial,
-    fgmodes,
-    Ninv,
-    ps_prior,
-    Niter=args.Niter,
-    seed=args.seed,
-    verbose=args.verbose,
-    nproc=nproc,
-)
-elapsed = time.time() - start
-
-results_dict = {
-    "signal_cr": signal_cr,
-    "signal_S": signal_S,
-    "signal_ps": signal_ps,
-    "fg_amps": fg_amps,
-    "elapsed": elapsed
-}
-data = (bl, results_dict)
-
+# Output file set up
 if args.out_dir:
     out_dir = args.out_dir
 else:
@@ -515,23 +461,49 @@ out_path = (
     / out_file
 )
 out_path.parent.mkdir(exist_ok=True)
-pkg_versions = {
-    "numpy": np.__version__,
-    "scipy": scipy.__version__,
-    "pyuvdata": pyuvdata.__version__,
-    "astropy": astropy.__version__
-}
+# Catalog git version
 try:
     git_info = get_git_version_info()
 except:
     git_info = None
 out_dict = {
-    "res": results_dict,
+    "samples": None,
     "git": git_info,
-    "pkgs": pkg_versions,
     "args": args
 }
-write_numpy_file(out_path, out_dict, clobber=args.clobber)
+
+# Run Gibbs sampler
+# signal_cr = (Niter, Ntimes, Nfreqs) [complex]
+# signal_S = (Nfreqs, Nfreqs) [complex]
+# signal_ps = (Niter, Nfreqs) [float]
+# fg_amps = (Niter, Ntimes, Nfgmodes) [complex]
+start = time.time()
+signal_cr, signal_S, signal_ps, fg_amps = hp.pspec.gibbs_sample_with_fg(
+    d,
+    w[0],  # FIXME
+    S_initial,
+    fgmodes,
+    Ninv,
+    ps_prior,
+    Niter=args.Niter,
+    seed=args.seed,
+    verbose=args.verbose,
+    nproc=nproc,
+    write_Niter=args.write_Niter,
+    out_path=out_path,
+    out_dict=out_dict,
+    clobber=args.clobber
+)
+elapsed = time.time() - start
+
+samples = {
+    "signal_cr": signal_cr,
+    "signal_S": signal_S,
+    "signal_ps": signal_ps,
+    "fg_amps": fg_amps,
+    "elapsed": elapsed
+}
+data = (bl, samples)
 
 # Gather results from all baselines
 data = comm.gather(data, root=0)
