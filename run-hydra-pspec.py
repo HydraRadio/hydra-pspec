@@ -267,7 +267,7 @@ if rank == 0:
     else:
         file_paths = sorted([Path(fp) for fp in args.file_paths])
     nfiles = len(file_paths)
-    print(f"\nReading {nfiles} file(s)", end="\n\n")
+    print(f"\nReading {nfiles} file(s)")
 
     uvd = UVData()
     if args.freq_range:
@@ -299,7 +299,7 @@ if rank == 0:
             nproc = 1
     else:
         nproc = args.Nproc
-    print(f'nproc = {nproc}', end='\n\n')
+    print(f"\nnproc = {nproc}")
 
     bl_data_shape = (uvd.Ntimes, uvd.Nfreqs)
     cov_ff_shape = (uvd.Nfreqs, uvd.Nfreqs)

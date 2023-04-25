@@ -85,7 +85,7 @@ def sprior(signals, bins, factor):
     return prior / (Nobs / 2 - 1)
 
 
-def gcr_fgmodes_1d(vis, w, matrices, fgmodes, f0=None):
+def gcr_fgmodes_1d(vis, w, matrices, fgmodes, f0=None, verbose=False):
     """
     Perform the GCR step on a single time sample.
 
@@ -132,12 +132,16 @@ def gcr_fgmodes_1d(vis, w, matrices, fgmodes, f0=None):
     if f0 is not None:
         x0 = np.concatenate((np.zeros(Nfreqs, dtype=complex), f0))
     xsoln, info = sp.sparse.linalg.cg(A, b, maxiter=1e5, x0=x0, M=Ai)
+    if verbose:
+        residual = np.abs(A @ xsoln - b[:, 0]).mean()
+    else:
+        residual = None
 
     # Return solution vector
-    return xsoln
+    return xsoln, residual, info
 
 
-def gcr_fgmodes(vis, w, matrices, fgmodes, f0=None, nproc=1):
+def gcr_fgmodes(vis, w, matrices, fgmodes, f0=None, nproc=1, verbose=False):
     """
     Perform the GCR step on all time samples, using parallelisation if
     possible.
@@ -167,25 +171,39 @@ def gcr_fgmodes(vis, w, matrices, fgmodes, f0=None, nproc=1):
             of shape `(Ntimes, Nfreqs + Nmodes)`.
     """
     samples = np.zeros((vis.shape[0], vis.shape[1] + fgmodes.shape[1]), dtype=complex)
+    if verbose:
+        residuals = np.zeros(vis.shape[0], dtype=float)
+        info = np.zeros(vis.shape[0], dtype=float)
+    else:
+        residuals = None
+        info = None
     idxs = np.arange(vis.shape[0])
 
     # Run GCR method on each time sample in parallel
-    st = time.time()
+    if verbose:
+        st = time.time()
     with Pool(nproc) as pool:
-        samples = pool.map(
+        samples, residuals, info = zip(*pool.map(
             lambda idx: gcr_fgmodes_1d(
                 vis=vis[idx],
                 w=w,
                 matrices=matrices,
                 fgmodes=fgmodes,
                 f0=f0,
+                verbose=verbose
             ),
             idxs,
-        )
+        ))
+    samples = np.array(samples).reshape((vis.shape[0], -1))
+    residuals = np.array(residuals)
+    info = np.array(info)
 
     # Return sample
-    print("%.1fs" % (time.time() - st), end=" ")
-    return np.array(samples).reshape((vis.shape[0], -1))
+    if verbose:
+        print(f"{time.time() - st:<14.1f}", end="")
+        print(f"{info.mean():<7.1f}", end="")
+        print(f"{residuals.mean():.2e}")
+    return samples
 
 
 def covariance_from_pspec(ps, fourier_op):
@@ -201,7 +219,8 @@ def covariance_from_pspec(ps, fourier_op):
 
 
 def gibbs_step_fgmodes(
-    vis, flags, signal_S, fgmodes, Ninv, ps_prior=None, f0=None, nproc=1
+    vis, flags, signal_S, fgmodes, Ninv, ps_prior=None, f0=None, nproc=1,
+    verbose=False
 ):
     """
     Perform a single Gibbs iteration for a Gibbs sampling scheme using a foreground model
@@ -274,7 +293,8 @@ def gibbs_step_fgmodes(
 
     # (1) Solve GCR equation to get EoR signal and foreground amplitude realisations
     cr = gcr_fgmodes(
-        vis=vis, w=flags, matrices=matrices, fgmodes=fgmodes, f0=f0, nproc=nproc
+        vis=vis, w=flags, matrices=matrices, fgmodes=fgmodes, f0=f0, nproc=nproc,
+        verbose=verbose
     )
 
     # Extract separate signal and FG parts from the solution
@@ -388,9 +408,12 @@ def gibbs_sample_with_fg(
     signal_S = S_initial.copy()
 
     # Loop over iterations
+    if verbose:
+        print("Iteration   Elapsed [s]   Info   |Ax - b|")
+        print("---------   -----------   ----   --------")
     for i in range(Niter):
         if verbose:
-            print("IT#%04d" % (i + 1), end=", ")
+            print(f"{i+1:<8d}", end="    ")
 
         # Do Gibbs iteration
         signal_cr[i], signal_S, signal_ps[i], fg_amps[i] = gibbs_step_fgmodes(
@@ -402,6 +425,7 @@ def gibbs_sample_with_fg(
             ps_prior=ps_prior,
             f0=None,
             nproc=nproc,
+            verbose=verbose
         )
 
         if (i+1) % write_Niter == 0:
@@ -434,5 +458,8 @@ def gibbs_sample_with_fg(
             }
         })
         utils.write_numpy_file(out_path, out_dict, clobber=True)
+
+    if verbose:
+        print()
 
     return signal_cr, signal_S, signal_ps, fg_amps
