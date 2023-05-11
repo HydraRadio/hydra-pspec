@@ -85,7 +85,9 @@ def sprior(signals, bins, factor):
     return prior / (Nobs / 2 - 1)
 
 
-def gcr_fgmodes_1d(vis, w, matrices, fgmodes, f0=None, verbose=False):
+def gcr_fgmodes_1d(
+    vis, w, matrices, fgmodes, f0=None, map_estimate=False, verbose=False
+):
     """
     Perform the GCR step on a single time sample.
 
@@ -103,7 +105,10 @@ def gcr_fgmodes_1d(vis, w, matrices, fgmodes, f0=None, verbose=False):
             matrix or similar.
         f0 (array_like):
             Initial guess for the foreground amplitudes, with shape `(Nmodes,)`.
-        nproc (int):
+        map_estimate (bool):
+            Provide the maximum a posteriori sample.
+        verbose (bool):
+            If True, output basic timing stats about each iteration.
 
     """
     Nfreqs, Nmodes = fgmodes.shape
@@ -117,10 +122,14 @@ def gcr_fgmodes_1d(vis, w, matrices, fgmodes, f0=None, verbose=False):
     A = matrices[1][0]
     Ai = matrices[1][1]
 
-    # Unit complex Gaussian random realisation
-    omi, omj = np.random.randn(Nfreqs, 1), np.random.randn(Nfreqs, 1)
-    omk, oml = np.random.randn(Nfreqs, 1), np.random.randn(Nfreqs, 1)
-    oma, omb = (omi + 1.0j * omj) / 2**0.5, (omk + 1.0j * oml) / 2**0.5
+    if map_estimate:
+        oma = np.zeros((Nfreqs, 1), dtype=complex)
+        omb = np.zeros((Nfreqs, 1), dtype=complex)
+    else:
+        # Unit complex Gaussian random realisation
+        omi, omj = np.random.randn(Nfreqs, 1), np.random.randn(Nfreqs, 1)
+        omk, oml = np.random.randn(Nfreqs, 1), np.random.randn(Nfreqs, 1)
+        oma, omb = (omi + 1.0j * omj) / 2**0.5, (omk + 1.0j * oml) / 2**0.5
 
     # Construct RHS vector
     b = np.zeros((Nfreqs + Nmodes, 1), dtype=complex)
@@ -141,7 +150,10 @@ def gcr_fgmodes_1d(vis, w, matrices, fgmodes, f0=None, verbose=False):
     return xsoln, residual, info
 
 
-def gcr_fgmodes(vis, w, matrices, fgmodes, f0=None, nproc=1, verbose=False):
+def gcr_fgmodes(
+    vis, w, matrices, fgmodes, f0=None, nproc=1, map_estimate=False,
+    verbose=False
+):
     """
     Perform the GCR step on all time samples, using parallelisation if
     possible.
@@ -164,6 +176,10 @@ def gcr_fgmodes(vis, w, matrices, fgmodes, f0=None, nproc=1, verbose=False):
             Initial guess for the foreground amplitudes, with shape `(Nmodes,)`.
         nproc (int):
             Number of processes to use for parallelised functions.
+        map_estimate (bool):
+            Provide the maximum a posteriori sample.
+        verbose (bool):
+            If True, output basic timing stats about each iteration.
 
     Returns:
         samples (array_like):
@@ -190,6 +206,7 @@ def gcr_fgmodes(vis, w, matrices, fgmodes, f0=None, nproc=1, verbose=False):
                 matrices=matrices,
                 fgmodes=fgmodes,
                 f0=f0,
+                map_estimate=map_estimate,
                 verbose=verbose
             ),
             idxs,
@@ -220,7 +237,7 @@ def covariance_from_pspec(ps, fourier_op):
 
 def gibbs_step_fgmodes(
     vis, flags, signal_S, fgmodes, Ninv, ps_prior=None, f0=None, nproc=1,
-    verbose=False
+    map_estimate=False, verbose=False
 ):
     """
     Perform a single Gibbs iteration for a Gibbs sampling scheme using a foreground model
@@ -249,6 +266,10 @@ def gibbs_step_fgmodes(
             Initial guess for the foreground amplitudes, with shape `(Nmodes,)`.
         nproc (int):
             Number of processes to use for parallelised functions.
+        map_estimate (bool):
+            Provide the maximum a posteriori sample.
+        verbose (bool):
+            If True, output basic timing stats about each iteration.
 
     Returns:
         signal_cr (array_like):
@@ -294,7 +315,7 @@ def gibbs_step_fgmodes(
     # (1) Solve GCR equation to get EoR signal and foreground amplitude realisations
     cr = gcr_fgmodes(
         vis=vis, w=flags, matrices=matrices, fgmodes=fgmodes, f0=f0, nproc=nproc,
-        verbose=verbose
+        map_estimate=map_estimate, verbose=verbose
     )
 
     # Extract separate signal and FG parts from the solution
@@ -325,7 +346,8 @@ def gibbs_sample_with_fg(
     write_Niter=100,
     out_path=None,
     out_dict=None,
-    clobber=False
+    clobber=False,
+    map_estimate=False
 ):
     """
     Run a Gibbs chain on data for a single baseline, using a foreground model
@@ -372,6 +394,9 @@ def gibbs_sample_with_fg(
             to be written to disk if out_path is not None.
         clobber (bool):
             Clobber existing files.
+        map_estimate (bool):
+            Provide the maximum a posteriori sample only, i.e. sets
+            `Niter = 1`.
 
     Returns:
         signal_cr (array_like):
@@ -385,8 +410,11 @@ def gibbs_sample_with_fg(
         fg_amps (array_like):
             Samples of the foreground amplitudes, shape `(Niter, Nmodes)`.
     """
-    # Set random seed
-    np.random.seed(seed)
+    if map_estimate:
+        Niter = 1
+    else:
+        # Set random seed
+        np.random.seed(seed)
 
     # Get shape of data/foreground modes
     Ntimes, Nfreqs = vis.shape
@@ -425,6 +453,7 @@ def gibbs_sample_with_fg(
             ps_prior=ps_prior,
             f0=None,
             nproc=nproc,
+            map_estimate=map_estimate,
             verbose=verbose
         )
 
