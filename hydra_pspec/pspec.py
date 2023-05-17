@@ -235,6 +235,58 @@ def covariance_from_pspec(ps, fourier_op):
     return C
 
 
+def build_matrices(Nparams, flags, signal_S, Ninv, fgmodes):
+    """
+    Calculate matrices and build A in Ax=b for the GCR step.
+    
+    Parameters:
+        Nparams (int):
+            Number of model parameters.
+        flags (array_like):
+            Array of flags (1 for unflagged, 0 for flagged), with shape 
+            `(Nfreqs,)`.
+        signal_S (array_like):
+            Current value of the EoR signal frequency-frequency covariance.
+        Ninv (array_like):
+            Inverse noise variance matrix. This can either have shape
+            `(Ntimes, Nfreqs, Nfreqs)`, one for each time, or can be a common
+            one for all times with shape `(Nfreqs, Nfreqs)`.
+        fgmodes (array_like):
+            Foreground mode array, of shape (Nfreqs, Nmodes). This should be
+            derived from a PCA decomposition of a model foreground covariance
+            matrix or similar.
+    
+    Returns:
+        matrices (list of array_like):
+            List containing necessary GCR operators (`matrices[0]`) and the
+            linear operator A in the GCR Ax=b solve step.
+    """
+    Nfreqs = signal_S.shape[0]
+    
+    # Construct matrix structure
+    matrices = [0, 0]
+    matrices[0] = np.zeros((4, Nfreqs, Nfreqs), dtype=complex)
+    matrices[1] = np.zeros((2, Nparams, Nparams), dtype=complex)
+
+    # Construct necessary operators for GCR
+    matrices[0][0] = sp.linalg.sqrtm(signal_S)  # Sh
+    matrices[0][1] = signal_S.copy()  # S
+    matrices[0][2] = flags.T * Ninv * flags  # Ni # FIXME
+    matrices[0][3] = sp.linalg.sqrtm(matrices[0][2])  # Nih
+
+    # Construct operator matrix
+    A = np.zeros((Nparams, Nparams), dtype=complex)
+    A[:Nfreqs, :Nfreqs] = np.eye(Nfreqs) + matrices[0][1] @ matrices[0][2]  # 1 + S @ Ni
+    A[:Nfreqs, Nfreqs:] = matrices[0][1] @ matrices[0][2] @ fgmodes
+    A[Nfreqs:, :Nfreqs] = fgmodes.T.conj() @ matrices[0][2]
+    A[Nfreqs:, Nfreqs:] = fgmodes.T.conj() @ matrices[0][2] @ fgmodes
+
+    matrices[1][0] = A
+    matrices[1][1] = np.linalg.pinv(A)  # pseudo-inverse, to be used as a preconditioner
+    
+    return matrices
+
+
 def gibbs_step_fgmodes(
     vis, flags, signal_S, fgmodes, Ninv, ps_prior=None, f0=None, nproc=1,
     map_estimate=False, verbose=False
@@ -283,7 +335,7 @@ def gibbs_step_fgmodes(
             Sample of the foreground amplitudes, shape `(Nmodes,)`.
     """
     # Shape of data and operators
-    Nvis, Nfreqs = vis.shape
+    Nfreqs = vis.shape[1]
     Nmodes = fgmodes.shape[1]
     Nparams = Nfreqs + Nmodes
     assert flags.shape == (Nfreqs,), "`flags` array must have shape (Nfreqs,)"
@@ -291,26 +343,8 @@ def gibbs_step_fgmodes(
     # Precompute 2D Fourier operator matrix
     fourier_op = utils.fourier_operator(Nfreqs)
 
-    # Construct matrix structure
-    matrices = [0, 0]
-    matrices[0] = np.zeros((4, Nfreqs, Nfreqs), dtype=complex)
-    matrices[1] = np.zeros((2, Nparams, Nparams), dtype=complex)
-
-    # Construct necessary operators for GCR
-    matrices[0][0] = sp.linalg.sqrtm(signal_S)  # Sh
-    matrices[0][1] = signal_S.copy()  # S
-    matrices[0][2] = flags.T * Ninv * flags  # Ni # FIXME
-    matrices[0][3] = sp.linalg.sqrtm(matrices[0][2])  # Nih
-
-    # Construct operator matrix
-    A = np.zeros((Nparams, Nparams), dtype=complex)
-    A[:Nfreqs, :Nfreqs] = np.eye(Nfreqs) + matrices[0][1] @ matrices[0][2]  # 1 + S @ Ni
-    A[:Nfreqs, Nfreqs:] = matrices[0][1] @ matrices[0][2] @ fgmodes
-    A[Nfreqs:, :Nfreqs] = fgmodes.T.conj() @ matrices[0][2]
-    A[Nfreqs:, Nfreqs:] = fgmodes.T.conj() @ matrices[0][2] @ fgmodes
-
-    matrices[1][0] = A
-    matrices[1][1] = np.linalg.pinv(A)  # pseudo-inverse, to be used as a preconditioner
+    # Get matrices necessary for the GCR step
+    matrices = build_matrices(Nparams, flags, signal_S, Ninv, fgmodes)
 
     # (1) Solve GCR equation to get EoR signal and foreground amplitude realisations
     cr = gcr_fgmodes(
