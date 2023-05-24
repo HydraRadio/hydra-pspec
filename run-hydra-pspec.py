@@ -478,22 +478,23 @@ out_dict = {
 # signal_ps = (Niter, Nfreqs) [float]
 # fg_amps = (Niter, Ntimes, Nfgmodes) [complex]
 start = time.time()
-signal_cr, signal_S, signal_ps, fg_amps = hp.pspec.gibbs_sample_with_fg(
-    d,
-    w[0],  # FIXME
-    S_initial,
-    fgmodes,
-    Ninv,
-    ps_prior,
-    Niter=args.Niter,
-    seed=args.seed,
-    verbose=args.verbose,
-    nproc=nproc,
-    write_Niter=args.write_Niter,
-    out_path=out_path,
-    out_dict=out_dict,
-    clobber=args.clobber
-)
+signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post = \
+    hp.pspec.gibbs_sample_with_fg(
+        d,
+        w[0],  # FIXME
+        S_initial,
+        fgmodes,
+        Ninv,
+        ps_prior,
+        Niter=args.Niter,
+        seed=args.seed,
+        verbose=args.verbose,
+        nproc=nproc,
+        write_Niter=args.write_Niter,
+        out_path=out_path,
+        out_dict=out_dict,
+        clobber=args.clobber
+    )
 elapsed = time.time() - start
 
 samples = {
@@ -501,6 +502,8 @@ samples = {
     "signal_S": signal_S,
     "signal_ps": signal_ps,
     "fg_amps": fg_amps,
+    "chisq": chisq,
+    "ln_post": ln_post,
     "elapsed": elapsed
 }
 data = (bl, samples)

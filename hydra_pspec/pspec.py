@@ -356,15 +356,15 @@ def gibbs_step_fgmodes(
     signal_cr = cr[:, : -fgmodes.shape[1]]
     fg_amps = cr[:, -fgmodes.shape[1] :]
 
+    # Full model of data is sum of EoR (GCR) + FG model
+    model = signal_cr + fg_amps @ fgmodes.T  # np.einsum('ijk,lk->ijl', fg_amps, fgmodes)
+    # Chi-squared is computed as the sum of ( |data - model| / noise )^2,
+    # i.e. as a sum of standard normal random variables.
+    # FIXME: this will need to be changed to account for time-dependent
+    # flags (i.e. when we have a different N per time).
+    chisq = np.sum(np.abs(vis - model)**2 * Ninv.diagonal()[None, :])
+    chisq /= vis.size  # Chi-squared per degree of freedom
     if verbose:
-        # Full model of data is sum of EoR (GCR) + FG model
-        model = signal_cr + fg_amps @ fgmodes.T  # np.einsum('ijk,lk->ijl', fg_amps, fgmodes)
-        # Chi-squared is computed as the sum of ( |data - model| / noise )^2,
-        # i.e. as a sum of standard normal random variables.
-        # FIXME: this will need to be changed to account for time-dependent
-        # flags (i.e. when we have a different N per time).
-        chisq = np.sum(np.abs(vis - model)**2 * Ninv.diagonal()[None, :])
-        chisq /= vis.size  # Chi-squared per degree of freedom
         print(f"{chisq:<9.3f}", end="")
 
     # (2) Sample EoR signal power spectrum (and also convert to equivalent
@@ -373,22 +373,23 @@ def gibbs_step_fgmodes(
     # The factor of 1/Nfreqs**2 here is an FFT normalization
     S_sample = covariance_from_pspec(ps_sample / Nfreqs**2, fourier_op)
 
+    # Log posterior
+    # Each time is treated as an independent sample.  So, the joint
+    # log posterior for all times is the sum of the individual log
+    # posteriors for each time.
+    # WARNING: np.linalg.inv should be avoided for general, dense matrices.
+    # S_sample should be diagonally dominant and thus this should be okay.
+    Sinv = np.linalg.inv(S_sample)
+    ln_post = np.sum(np.diagonal(
+        -(vis - model).conj() @ Ninv @ (vis - model).T
+        - signal_cr.conj() @ Sinv @ signal_cr.T
+    ))
+    ln_post = ln_post.real
     if verbose:
-        # Log posterior
-        # Each time is treated as an independent sample.  So, the joint
-        # log posterior for all times is the sum of the individual log
-        # posteriors for each time.
-        # WARNING: np.linalg.inv should be avoided for general, dense matrices.
-        # S_sample should be diagonally dominant and thus this should be okay.
-        Sinv = np.linalg.inv(S_sample)
-        ln_post = np.sum(np.diagonal(
-            -(vis - model).conj() @ Ninv @ (vis - model).T
-            - signal_cr.conj() @ Sinv @ signal_cr.T
-        ))
-        print(f"{ln_post.real:<12.1f}")
+        print(f"{ln_post:<12.1f}")
 
     # Return samples
-    return signal_cr, S_sample, ps_sample, fg_amps
+    return signal_cr, S_sample, ps_sample, fg_amps, chisq, ln_post
 
 
 def gibbs_sample_with_fg(
@@ -490,6 +491,9 @@ def gibbs_sample_with_fg(
     signal_S = np.zeros((Niter, Nfreqs, Nfreqs))
     signal_ps = np.zeros((Niter, Nfreqs))
     fg_amps = np.zeros((Niter, Ntimes, Nmodes), dtype=complex)
+    # Useful debugging statistics
+    chisq = np.zeros(Niter)
+    ln_post = np.zeros(Niter)
 
     # Set initial value for signal_S
     signal_S = S_initial.copy()
@@ -503,18 +507,19 @@ def gibbs_sample_with_fg(
             print(f"{i+1:<9d}", end="")
 
         # Do Gibbs iteration
-        signal_cr[i], signal_S, signal_ps[i], fg_amps[i] = gibbs_step_fgmodes(
-            vis=vis * flags,
-            flags=flags,
-            signal_S=signal_S,
-            fgmodes=fgmodes,
-            Ninv=Ninv,
-            ps_prior=ps_prior,
-            f0=None,
-            nproc=nproc,
-            map_estimate=map_estimate,
-            verbose=verbose
-        )
+        signal_cr[i], signal_S, signal_ps[i], fg_amps[i], chisq[i], ln_post[i]\
+            = gibbs_step_fgmodes(
+                vis=vis * flags,
+                flags=flags,
+                signal_S=signal_S,
+                fgmodes=fgmodes,
+                Ninv=Ninv,
+                ps_prior=ps_prior,
+                f0=None,
+                nproc=nproc,
+                map_estimate=map_estimate,
+                verbose=verbose
+            )
 
         if (i+1) % write_Niter == 0:
             # Write current set of samples to disk
@@ -526,7 +531,9 @@ def gibbs_sample_with_fg(
                         "signal_cr": signal_cr[:i+1],
                         "signal_S": signal_S,
                         "signal_ps": signal_ps[:i+1],
-                        "fg_amps": fg_amps[:i+1]
+                        "fg_amps": fg_amps[:i+1],
+                        "chisq": chisq[:i+1],
+                        "ln_post": ln_post[:i+1]
                     }
                 })
                 if (i+1) == 2*write_Niter:
@@ -542,7 +549,9 @@ def gibbs_sample_with_fg(
                 "signal_cr": signal_cr,
                 "signal_S": signal_S,
                 "signal_ps": signal_ps,
-                "fg_amps": fg_amps
+                "fg_amps": fg_amps,
+                "chisq": chisq,
+                "ln_post": ln_post
             }
         })
         utils.write_numpy_file(out_path, out_dict, clobber=True)
