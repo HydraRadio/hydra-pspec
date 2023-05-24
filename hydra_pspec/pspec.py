@@ -362,10 +362,9 @@ def gibbs_step_fgmodes(
     # i.e. as a sum of standard normal random variables.
     # FIXME: this will need to be changed to account for time-dependent
     # flags (i.e. when we have a different N per time).
-    chisq = np.sum(np.abs(vis - model)**2 * Ninv.diagonal()[None, :])
-    chisq /= vis.size  # Chi-squared per degree of freedom
+    chisq = np.abs(vis - model)**2 * Ninv.diagonal()[None, :]
     if verbose:
-        print(f"{chisq:<9.3f}", end="")
+        print(f"{chisq.mean():<9.3f}", end="")
 
     # (2) Sample EoR signal power spectrum (and also convert to equivalent
     # covariance matrix sample)
@@ -492,7 +491,7 @@ def gibbs_sample_with_fg(
     signal_ps = np.zeros((Niter, Nfreqs))
     fg_amps = np.zeros((Niter, Ntimes, Nmodes), dtype=complex)
     # Useful debugging statistics
-    chisq = np.zeros(Niter)
+    chisq = np.zeros((Niter, Ntimes, Nfreqs))
     ln_post = np.zeros(Niter)
 
     # Set initial value for signal_S
