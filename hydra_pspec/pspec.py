@@ -559,4 +559,4 @@ def gibbs_sample_with_fg(
     if verbose:
         print()
 
-    return signal_cr, signal_S, signal_ps, fg_amps
+    return signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post
