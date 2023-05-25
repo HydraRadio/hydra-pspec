@@ -436,7 +436,7 @@ ps_prior = np.zeros((2, Nfreqs))
 if args.ps_prior_lo != 0 or args.ps_prior_hi != 0:
     ps_prior_inds = slice(
         Nfreqs//2 - args.n_ps_prior_bins,
-        Nfreqs//2 + args.n_ps_prior_bins
+        Nfreqs//2 + args.n_ps_prior_bins + 1
     )
     ps_prior[0, ps_prior_inds] = args.ps_prior_hi
     ps_prior[1, ps_prior_inds] = args.ps_prior_lo
@@ -497,26 +497,26 @@ signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post = \
     )
 elapsed = time.time() - start
 
-samples = {
-    "signal_cr": signal_cr,
-    "signal_S": signal_S,
-    "signal_ps": signal_ps,
-    "fg_amps": fg_amps,
-    "chisq": chisq,
-    "ln_post": ln_post,
-    "elapsed": elapsed
-}
-data = (bl, samples)
+# samples = {
+#     "signal_cr": signal_cr,
+#     "signal_S": signal_S,
+#     "signal_ps": signal_ps,
+#     "fg_amps": fg_amps,
+#     "chisq": chisq,
+#     "ln_post": ln_post,
+#     "elapsed": elapsed
+# }
+# data = (bl, samples)
 
-# Gather results from all baselines
-data = comm.gather(data, root=0)
-if rank == 0:
-    data = dict(data)
-    times = [data[bl_key]["elapsed"] for bl_key in data]
-    times_avg = np.mean(times) * units.s
-    if times_avg.value > 3600:
-        times_avg = times_avg.to("h")
-    elif times_avg.value > 60:
-        times_avg = times_avg.to("min")
-    print(f"Average evaluation time for {args.Niter} iterations: {times_avg}")
+# # Gather results from all baselines
+# data = comm.gather(data, root=0)
+# if rank == 0:
+#     data = dict(data)
+#     times = [data[bl_key]["elapsed"] for bl_key in data]
+#     times_avg = np.mean(times) * units.s
+#     if times_avg.value > 3600:
+#         times_avg = times_avg.to("h")
+#     elif times_avg.value > 60:
+#         times_avg = times_avg.to("min")
+#     print(f"Average evaluation time for {args.Niter} iterations: {times_avg}")
 
