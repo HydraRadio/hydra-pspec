@@ -107,7 +107,7 @@ parser.add_argument(
 parser.add_argument(
     "--noise_file",
     type=str,
-    help="If passing a directory containing per-baseline flags to --noise, "
+    help="If passing a directory containing per-baseline noise to --noise, "
          "--noise_file specifies the name of the file to load in each "
          "baseline's subdirectory."
 )
@@ -135,9 +135,9 @@ parser.add_argument(
 parser.add_argument(
     "--nsamples_file",
     type=str,
-    help="If passing a directory containing per-baseline flags to --nsamples, "
-         "--nsamples_file specifies the name of the file to load in each "
-         "baseline's subdirectory."
+    help="If passing a directory containing per-baseline nsamples to "
+         "--nsamples, --nsamples_file specifies the name of the file to load "
+         "in each baseline's subdirectory."
 )
 parser.add_argument(
     "--n_ps_prior_bins",
