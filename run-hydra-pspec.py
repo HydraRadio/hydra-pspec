@@ -370,7 +370,7 @@ if rank == 0:
             bl_flags_path = flags_path / bl_str / args.flags_file
             flags = np.load(bl_flags_path)
             check_shape(flags.shape, d.shape, desc=f"flags ({bl_str})")
-        else:
+        elif not args.flags:
             flags = uvd.get_flags(antpair + ("xx",))
 
         if args.nsamples and nsamples_path_is_dir:
