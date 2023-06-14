@@ -364,7 +364,10 @@ def gibbs_step_fgmodes(
     # flags (i.e. when we have a different N per time).
     chisq = np.abs(vis - model)**2 * Ninv.diagonal()[None, :]
     if verbose:
-        print(f"{chisq.mean():<9.3f}", end="")
+        if chisq.mean() % 10 > 0:
+            print(f"{chisq.mean():<9.1e}", end="")
+        else:
+            print(f"{chisq.mean():<9.3f}", end="")
 
     # (2) Sample EoR signal power spectrum (and also convert to equivalent
     # covariance matrix sample)
