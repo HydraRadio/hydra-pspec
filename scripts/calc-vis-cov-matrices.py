@@ -23,7 +23,7 @@ from tqdm import tqdm
 from astropy import units
 from astropy.units import Quantity
 
-from hydra_pspec.utils import get_git_version_info
+from hydra_pspec.utils import get_git_version_info, form_pseudo_stokes_vis
 
 
 def add_mtime_to_filename(fp, join_char='-'):
@@ -212,13 +212,7 @@ for i_bl, bl in enumerate(bls):
     uvws[i_bl] = uvd.uvw_array[uvd.antpair2ind(bl)[0]]
 
 print(f"\nForming pI visibilities", end="\n\n")
-if uvutils.polstr2num("pI") not in uvd.polarization_array:
-    # Make pI visibilities from 0.5 * (XX + YY)
-    xpol_ind = np.where(uvd.polarization_array == uvutils.polstr2num("xx"))[0]
-    ypol_ind = np.where(uvd.polarization_array == uvutils.polstr2num("yy"))[0]
-    uvd.data_array[..., xpol_ind] += uvd.data_array[..., ypol_ind]
-    uvd.data_array *= 0.5
-    uvd.select(polarizations=["xx"])
+uvd = form_pseudo_stokes_vis(uvd)
 
 # Set up directory structure
 if args.out_dir == "":
