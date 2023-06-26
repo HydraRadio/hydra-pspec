@@ -164,6 +164,11 @@ parser.add_argument(
          "Defaults to 0 which corresponds to no upper bound."
 )
 parser.add_argument(
+    "--map_estimate",
+    action="store_true",
+    help="Calculate the maximum a posteriori estimate only (1 iteration)."
+)
+parser.add_argument(
     "--Niter",
     type=int,
     default=100,
@@ -488,6 +493,7 @@ signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post = \
         ps_prior,
         Niter=args.Niter,
         seed=args.seed,
+        map_estimate=args.map_estimate,
         verbose=args.verbose,
         nproc=nproc,
         write_Niter=args.write_Niter,
