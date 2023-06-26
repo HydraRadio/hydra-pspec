@@ -22,6 +22,7 @@ from argparse import ArgumentParser
 from tqdm import tqdm
 from astropy import units
 from astropy.units import Quantity
+from scipy.signal.windows import blackmanharris
 
 from hydra_pspec.utils import get_git_version_info, form_pseudo_stokes_vis
 
@@ -165,6 +166,11 @@ parser.add_argument(
          "contain spaces."
 )
 parser.add_argument(
+    "--taper",
+    action="store_true",
+    help="Taper the data along the frequency axis."
+)
+parser.add_argument(
     "--eig",
     action="store_true",
     help="Perform an eigendecomposition of the covariance matrix of each "
@@ -230,12 +236,17 @@ write_numpy_file(
     base_dir / "metadata-dict.npy", metadata_dict, clobber=args.clobber
 )
 
+if args.taper:
+    taper = blackmanharris(freqs.size)
+
 # Get per-baseline time-averaged freq-freq covariance matrices
 print("Calculating covariance matrices" + args.eig*" and Eigen vecs/vals")
 for i_bl, bl in enumerate(tqdm(bls, desc="Baselines")):
     bl_dir = base_dir / f"{bl[0]}-{bl[1]}"
     bl_dir.mkdir(exist_ok=True)
     bl_data = uvd.get_data(bl)  # shape (Ntimes, Nfreqs)
+    if args.taper:
+        bl_data *= taper[None, :]
     cov_mat = np.cov(bl_data.T)
     cov_file = f"cov-{freq_str}.npy"
     write_numpy_file(bl_dir / cov_file, cov_mat, clobber=args.clobber)
