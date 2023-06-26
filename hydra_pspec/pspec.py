@@ -1,7 +1,7 @@
 import numpy as np
 import scipy as sp
 from scipy.stats import mode
-from scipy.signal.windows import blackmanharris as BH
+from scipy.signal.windows import blackmanharris
 from scipy.stats import invgamma
 from scipy.optimize import minimize, Bounds
 
@@ -35,6 +35,7 @@ def sample_S(s=None, sk=None, prior=None):
         raise ValueError("Must pass in s (real space) or sk (Fourier space) vector.")
 
     if sk is None:
+        # FIXME: Add taper?
         axes = (1,)
         sk = np.fft.ifftshift(s, axes=axes)
         sk = np.fft.fftn(sk, axes=axes)
@@ -412,6 +413,7 @@ def gibbs_sample_with_fg(
     ps_prior,
     Niter=100,
     seed=None,
+    taper=False,
     verbose=True,
     nproc=1,
     write_Niter=100,
@@ -452,6 +454,9 @@ def gibbs_sample_with_fg(
             Number of iterations of the sampler to run.
         seed (int):
             Random seed to use for random parts of the sampler.
+        taper (bool):
+            Taper the data along the frequency axis.  Uses a Blackman-Harris
+            tapering function.
         verbose (bool):
             If True, output basic timing stats about each iteration.
         nproc (int):
@@ -506,8 +511,20 @@ def gibbs_sample_with_fg(
     chisq = np.zeros((Niter, Ntimes, Nfreqs))
     ln_post = np.zeros(Niter)
 
+    # FIXME: Add taper?
     # Set initial value for signal_S
     signal_S = S_initial.copy()
+    if taper:
+        T = np.diag(blackmanharris(Nfreqs))  # taper matrix
+        # For the first iteration, we need to compute the tapered signal
+        # covariance.  The tapering will be implicit in the model after the
+        # first iteration as the model is derived from the tapered data.
+        signal_S = T @ signal_S @ T
+        vis *= T.diagonal()[None, :]
+        fgmodes *= T.diagonal()[:, None]
+
+        Tinv = np.diag(1/T.diagonal())
+        Ninv = Tinv @ Ninv @ Tinv  # tapered noise covariance
 
     # Loop over iterations
     if verbose:

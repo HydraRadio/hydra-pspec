@@ -169,6 +169,11 @@ parser.add_argument(
     help="Calculate the maximum a posteriori estimate only (1 iteration)."
 )
 parser.add_argument(
+    "--taper",
+    action="store_true",
+    help="Taper the data along the frequency axis."
+)
+parser.add_argument(
     "--Niter",
     type=int,
     default=100,
@@ -494,6 +499,7 @@ signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post = \
         Niter=args.Niter,
         seed=args.seed,
         map_estimate=args.map_estimate,
+        taper=args.taper,
         verbose=args.verbose,
         nproc=nproc,
         write_Niter=args.write_Niter,
