@@ -244,7 +244,7 @@ print("Calculating covariance matrices" + args.eig*" and Eigen vecs/vals")
 for i_bl, bl in enumerate(tqdm(bls, desc="Baselines")):
     bl_dir = base_dir / f"{bl[0]}-{bl[1]}"
     bl_dir.mkdir(exist_ok=True)
-    bl_data = uvd.get_data(bl)  # shape (Ntimes, Nfreqs)
+    bl_data = uvd.get_data(bl, force_copy=True)  # shape (Ntimes, Nfreqs)
     if args.taper:
         bl_data *= taper[None, :]
     cov_mat = np.cov(bl_data.T)
