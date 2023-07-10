@@ -522,8 +522,8 @@ def gibbs_sample_with_fg(
         signal_S = T @ signal_S @ T
         vis *= T.diagonal()[None, :]
 
-        Tinv = np.diag(1/T.diagonal())
-        Ninv = Tinv @ Ninv @ Tinv  # tapered noise covariance
+        # Tinv = np.diag(1/T.diagonal())
+        # Ninv = Tinv @ Ninv @ Tinv  # tapered noise covariance
 
     # Loop over iterations
     if verbose:
