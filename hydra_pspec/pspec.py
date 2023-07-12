@@ -520,7 +520,7 @@ def gibbs_sample_with_fg(
         # covariance.  The tapering will be implicit in the model after the
         # first iteration as the model is derived from the tapered data.
         signal_S = T @ signal_S @ T
-        vis *= T.diagonal()[None, :]
+        vis = vis.copy() * T.diagonal()[None, :]
 
         # Tinv = np.diag(1/T.diagonal())
         # Ninv = Tinv @ Ninv @ Tinv  # tapered noise covariance
