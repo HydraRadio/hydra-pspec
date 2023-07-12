@@ -548,7 +548,7 @@ def gibbs_sample_with_fg(
                 verbose=verbose
             )
 
-        if (i+1) % write_Niter == 0:
+        if (i+1) % write_Niter == 0 and not map_estimate:
             # Write current set of samples to disk
             if out_path is not None:
                 if out_dict is None:
@@ -569,7 +569,7 @@ def gibbs_sample_with_fg(
                     clobber = True
                 utils.write_numpy_file(out_path, out_dict, clobber=clobber)
     
-    if out_path is not None:
+    if out_path is not None and not map_estimate:
         # Write all samples to disk
         out_dict.update({
             "samples": {
