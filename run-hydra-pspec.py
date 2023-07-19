@@ -460,6 +460,8 @@ else:
     out_file = args.filename
     if not out_file.endswith('.npy'):
         out_file += '.npy'
+if args.map_estimate:
+    out_file = out_file.replace('.npy', '-map-estimate.npy')
 out_path = (
     out_dir
     / f"{bl[0]}-{bl[1]}"
