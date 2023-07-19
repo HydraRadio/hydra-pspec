@@ -521,7 +521,6 @@ def gibbs_sample_with_fg(
         # first iteration as the model is derived from the tapered data.
         signal_S = T @ signal_S @ T
         vis = vis.copy() * T.diagonal()[None, :]
-        fgmodes = fgmodes.copy() * T.diagonal()[:, None]
 
         # Tinv = np.diag(1/T.diagonal())
         # Ninv = Tinv @ Ninv @ Tinv  # tapered noise covariance
