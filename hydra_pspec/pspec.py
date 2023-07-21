@@ -231,7 +231,7 @@ def covariance_from_pspec(ps, fourier_op):
     Nfreqs = ps.size
     Csigfft = np.zeros((Nfreqs, Nfreqs), dtype=complex)
     Csigfft[np.diag_indices(Nfreqs)] = ps
-    C = (fourier_op.T.conj() @ Csigfft @ fourier_op).real
+    C = (fourier_op.T.conj() @ Csigfft @ fourier_op)
     return C
 
 
