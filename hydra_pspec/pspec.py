@@ -86,7 +86,18 @@ def sprior(signals, bins, factor):
 
 
 def gcr_fgmodes_1d(
-    vis, w, matrices, fgmodes, f0=None, map_estimate=False, verbose=False
+    vis,
+    w,
+    S,
+    Sh,
+    Ni,
+    Nih,
+    A,
+    Ai,
+    fgmodes,
+    f0=None,
+    map_estimate=False,
+    verbose=False
 ):
     """
     Perform the GCR step on a single time sample.
@@ -115,12 +126,12 @@ def gcr_fgmodes_1d(
     d = vis.reshape((1, max(Nfreqs, len(vis.T))))
 
     # Extract precomputed matrices needed by the linear system
-    Sh = matrices[0][0]
-    S = matrices[0][1]
-    Ni = matrices[0][2]
-    Nih = matrices[0][3]
-    A = matrices[1][0]
-    Ai = matrices[1][1]
+    # Sh = matrices[0][0]
+    # S = matrices[0][1]
+    # Ni = matrices[0][2]
+    # Nih = matrices[0][3]
+    # A = matrices[1][0]
+    # Ai = matrices[1][1]
 
     if map_estimate:
         oma = np.zeros((Nfreqs, 1), dtype=complex)
@@ -164,8 +175,9 @@ def gcr_fgmodes(
             `(Ntimes, Nfreqs)`.
         w (array_like):
             Array of flags or weights (e.g. 1 for unflagged, 0 for flagged).
-        matrices (array_like):
-            Array containing precomputed matrices needed by the linear system.
+        matrices (dict of array_like):
+            Dictionary containing precomputed matrices needed by the linear
+            system.
         fgmodes (array_like):
             Foreground mode array, of shape (Nmodes, Nfreqs). This should be
             derived from a PCA decomposition of a model foreground covariance
@@ -186,7 +198,9 @@ def gcr_fgmodes(
             Array of signal + foreground realisations for each time sample,
             of shape `(Ntimes, Nfreqs + Nmodes)`.
     """
-    samples = np.zeros((vis.shape[0], vis.shape[1] + fgmodes.shape[1]), dtype=complex)
+    samples = np.zeros(
+        (vis.shape[0], vis.shape[1] + fgmodes.shape[1]), dtype=complex
+    )
     if verbose:
         residuals = np.zeros(vis.shape[0], dtype=float)
         info = np.zeros(vis.shape[0], dtype=float)
@@ -199,18 +213,63 @@ def gcr_fgmodes(
     if verbose:
         st = time.time()
     with Pool(nproc) as pool:
-        samples, residuals, info = zip(*pool.map(
-            lambda idx: gcr_fgmodes_1d(
-                vis=vis[idx],
-                w=w,
-                matrices=matrices,
-                fgmodes=fgmodes,
-                f0=f0,
-                map_estimate=map_estimate,
-                verbose=verbose
-            ),
-            idxs,
-        ))
+        if len(matrices["Ninv"].shape) == 3 and len(w.shape) == 2:
+            # Time-dependent flags and inverse noise covariance matrix
+            samples, residuals, info = zip(*pool.map(
+                lambda idx: gcr_fgmodes_1d(
+                    vis=vis[idx],
+                    w=w[idx],
+                    S=matrices["S"],
+                    Sh=matrices["sqrtS"],
+                    Ni=matrices["Ninv"][idx],
+                    Nih=matrices["sqrtNinv"][idx],
+                    A=matrices["A"][idx],
+                    Ai=matrices["Apinv"][idx],
+                    fgmodes=fgmodes,
+                    f0=f0,
+                    map_estimate=map_estimate,
+                    verbose=verbose
+                ),
+                idxs,
+            ))
+        elif len(w.shape) == 2:
+            # Only time dependent flags
+            samples, residuals, info = zip(*pool.map(
+                lambda idx: gcr_fgmodes_1d(
+                    vis=vis[idx],
+                    w=w[idx],
+                    S=matrices["S"],
+                    Sh=matrices["sqrtS"],
+                    Ni=matrices["Ninv"],
+                    Nih=matrices["sqrtNinv"],
+                    A=matrices["A"][idx],
+                    Ai=matrices["Apinv"][idx],
+                    fgmodes=fgmodes,
+                    f0=f0,
+                    map_estimate=map_estimate,
+                    verbose=verbose
+                ),
+                idxs,
+            ))
+        else:
+            # Time-independent flags and inverse noise covariance matrix
+            samples, residuals, info = zip(*pool.map(
+                lambda idx: gcr_fgmodes_1d(
+                    vis=vis[idx],
+                    w=w,
+                    S=matrices["S"],
+                    Sh=matrices["sqrtS"],
+                    Ni=matrices["Ninv"],
+                    Nih=matrices["sqrtNinv"],
+                    A=matrices["A"],
+                    Ai=matrices["Apinv"],
+                    fgmodes=fgmodes,
+                    f0=f0,
+                    map_estimate=map_estimate,
+                    verbose=verbose
+                ),
+                idxs,
+            ))
     samples = np.array(samples).reshape((vis.shape[0], -1))
     residuals = np.array(residuals)
     info = np.array(info)
@@ -244,7 +303,7 @@ def build_matrices(Nparams, flags, signal_S, Ninv, fgmodes):
             Number of model parameters.
         flags (array_like):
             Array of flags (1 for unflagged, 0 for flagged), with shape 
-            `(Nfreqs,)`.
+            `(Ntimes, Nfreqs)` or `(Nfreqs,)`.
         signal_S (array_like):
             Current value of the EoR signal frequency-frequency covariance.
         Ninv (array_like):
@@ -257,32 +316,90 @@ def build_matrices(Nparams, flags, signal_S, Ninv, fgmodes):
             matrix or similar.
     
     Returns:
-        matrices (list of array_like):
-            List containing necessary GCR operators (`matrices[0]`) and the
-            linear operator A in the GCR Ax=b solve step.
+        matrices (dict of array_like):
+            Dictionary containing necessary GCR operators and the linear
+            operator A in the GCR Ax=b solve step.
     """
     Nfreqs = signal_S.shape[0]
-    
-    # Construct matrix structure
-    matrices = [0, 0]
-    matrices[0] = np.zeros((4, Nfreqs, Nfreqs), dtype=complex)
-    matrices[1] = np.zeros((2, Nparams, Nparams), dtype=complex)
+    if len(Ninv.shape) == 3:
+        Ntimes = Ninv.shape[0]
+    elif len(flags.shape) == 2:
+        Ntimes = flags.shape[0]
+    else:
+        Ntimes = None
 
-    # Construct necessary operators for GCR
-    matrices[0][0] = sp.linalg.sqrtm(signal_S)  # Sh
-    matrices[0][1] = signal_S.copy()  # S
-    matrices[0][2] = flags.T * Ninv * flags  # Ni # FIXME
-    matrices[0][3] = sp.linalg.sqrtm(matrices[0][2])  # Nih
+    matrices = {}
 
-    # Construct operator matrix
-    A = np.zeros((Nparams, Nparams), dtype=complex)
-    A[:Nfreqs, :Nfreqs] = np.eye(Nfreqs) + matrices[0][1] @ matrices[0][2]  # 1 + S @ Ni
-    A[:Nfreqs, Nfreqs:] = matrices[0][1] @ matrices[0][2] @ fgmodes
-    A[Nfreqs:, :Nfreqs] = fgmodes.T.conj() @ matrices[0][2]
-    A[Nfreqs:, Nfreqs:] = fgmodes.T.conj() @ matrices[0][2] @ fgmodes
+    # Construct required operators for GCR
+    matrices["S"] = signal_S.copy()
+    matrices["sqrtS"] = sp.linalg.sqrtm(signal_S)
 
-    matrices[1][0] = A
-    matrices[1][1] = np.linalg.pinv(A)  # pseudo-inverse, to be used as a preconditioner
+    if Ntimes is not None:
+        # Construct time-dependent operators: the time axis is present in the
+        # flags and/or inverse noise covariance matrix
+        matrices["Ninv"] = np.zeros((Ntimes, Nfreqs, Nfreqs))
+        matrices["sqrtNinv"] = np.zeros_like(matrices["Ninv"])
+        matrices["A"] = np.zeros((Ntimes, Nparams, Nparams), dtype=complex)
+        matrices["Apinv"] = np.zeros_like(matrices["A"])
+
+        if len(flags.shape) == 1:
+            # If we have time-independent flags, tile the flags along the time
+            # axis
+            flags = np.tile(flags, Ntimes).reshape((Ntimes, Nfreqs))
+
+        for i_t in range(Ntimes):
+            # Inverse noise covariance matrices
+            if len(Ninv.shape) == 2:
+                # It's possible we have a single Ninv for all times but the
+                # flags are still time dependent, in which case we just reuse
+                # a single Ninv matrix.
+                Ninv_t = Ninv
+            else:
+                # Otherwise, we have a time dependent Ninv and we pull the
+                # corresponding matrix for a given time.
+                Ninv_t = Ninv[i_t]
+            matrices["Ninv"][i_t] = flags[i_t].T * Ninv_t * flags[i_t]
+            matrices["sqrtNinv"][i_t] = sp.linalg.sqrtm(matrices["Ninv"][i_t])
+
+            # Operator matrix (A in Ax=b)
+            matrices["A"][i_t][:Nfreqs, :Nfreqs] = (
+                np.eye(Nfreqs) + matrices["S"] @ matrices["Ninv"][i_t]
+            )
+            matrices["A"][i_t][:Nfreqs, Nfreqs:] = (
+                matrices["S"] @ matrices["Ninv"][i_t] @ fgmodes
+            )
+            matrices["A"][i_t][Nfreqs:, :Nfreqs] = (
+                fgmodes.T.conj() @ matrices["Ninv"][i_t]
+            )
+            matrices["A"][i_t][Nfreqs:, Nfreqs:] = (
+                fgmodes.T.conj() @ matrices["Ninv"][i_t] @ fgmodes
+            )
+            # Pseudo-inverse matrix, to be used as a preconditioner
+            matrices["Apinv"][i_t] = np.linalg.pinv(matrices["A"][i_t])
+    else:
+        # Construct time-independent operators: the flags and
+        # inverse noise covariance matrix have no time axis
+
+        # Inverse noise covariance matrices
+        matrices["Ninv"] = flags.T * Ninv * flags
+        matrices["sqrtNinv"] = sp.linalg.sqrtm(matrices["Ninv"])
+
+        # Operator matrix (A in Ax=b)
+        matrices["A"] = np.zeros((Nparams, Nparams), dtype=complex)
+        matrices["A"][:Nfreqs, :Nfreqs] = (
+            np.eye(Nfreqs) + matrices["S"] @ matrices["Ninv"]
+        )
+        matrices["A"][:Nfreqs, Nfreqs:] = (
+            matrices["S"] @ matrices["Ninv"] @ fgmodes
+        )
+        matrices["A"][Nfreqs:, :Nfreqs] = (
+            fgmodes.T.conj() @ matrices["Ninv"]
+        )
+        matrices["A"][Nfreqs:, Nfreqs:] = (
+            fgmodes.T.conj() @ matrices["Ninv"] @ fgmodes
+        )
+        # Pseudo-inverse matrix, to be used as a preconditioner
+        matrices["Apinv"] = np.linalg.pinv(matrices["A"])
     
     return matrices
 
@@ -301,7 +418,7 @@ def gibbs_step_fgmodes(
             `(Ntimes, Nfreqs)`.
         flags (array_like):
             Array of flags (1 for unflagged, 0 for flagged), with shape 
-            `(Nfreqs,)`.
+            `(Ntimes, Nfreqs)` or `(Nfreqs,)`.
         signal_S (array_like):
             Current value of the EoR signal frequency-frequency covariance.
         fgmodes (array_like):
@@ -338,7 +455,6 @@ def gibbs_step_fgmodes(
     Nfreqs = vis.shape[1]
     Nmodes = fgmodes.shape[1]
     Nparams = Nfreqs + Nmodes
-    assert flags.shape == (Nfreqs,), "`flags` array must have shape (Nfreqs,)"
 
     # Precompute 2D Fourier operator matrix
     fourier_op = utils.fourier_operator(Nfreqs)
@@ -364,7 +480,10 @@ def gibbs_step_fgmodes(
     # flags (i.e. when we have a different N per time).
     chisq = np.abs(vis - model)**2 * Ninv.diagonal()[None, :]
     if verbose:
-        chisq_mean = chisq[:, flags].mean()
+        if len(flags.shape) == 1:
+            chisq_mean = chisq[:, flags].mean()
+        else:
+            chisq_mean = chisq[flags].mean()
         if chisq_mean > 10:
             print(f"{chisq_mean:<9.1e}", end="")
         else:
@@ -383,18 +502,45 @@ def gibbs_step_fgmodes(
     # WARNING: np.linalg.inv should be avoided for general, dense matrices.
     # S_sample should be diagonally dominant and thus this should be okay.
     Sinv = np.linalg.inv(S_sample)
-    ln_post = np.sum(np.diagonal(
-        -(
-            (vis - model)[:, flags].conj()
-            @ Ninv[flags][:, flags]
-            @ (vis - model)[:, flags].T
-        )
-        - (
-            signal_cr[:, flags].conj()
-            @ Sinv[flags][:, flags]
-            @ signal_cr[:, flags].T
-        )
-    ))
+    if len(flags.shape) == 1 and len(Ninv.shape) == 2:
+        # No time axis in flags and inverse noise covariance matrix
+        ln_post = np.sum(np.diagonal(
+            -(
+                (vis - model)[:, flags].conj()
+                @ Ninv[flags][:, flags]
+                @ (vis - model)[:, flags].T
+            )
+            - (
+                signal_cr[:, flags].conj()
+                @ Sinv[flags][:, flags]
+                @ signal_cr[:, flags].T
+            )
+        ))
+    else:
+        # Time axis in flags and/or inverse noise covariance matrix
+        Ntimes = vis.shape[0]
+        ln_post = 0j
+        for i_t in range(Ntimes):
+            if len(Ninv.shape) == 3:
+                Ninv_t = Ninv[i_t]
+            else:
+                Ninv_t = Ninv
+            if len(flags.shape) == 2:
+                flags_t = flags[i_t]
+            else:
+                flags_t = flags
+            ln_post += (
+                -(
+                    (vis[i_t, flags_t] - model[i_t, flags_t]).conj()
+                    @ Ninv_t[flags_t][:, flags_t]
+                    @ (vis[i_t, flags_t] - model[i_t, flags_t]).T
+                )
+                - (
+                    signal_cr[i_t, flags_t].conj()
+                    @ Sinv[flags_t][:, flags_t]
+                    @ signal_cr[i_t, flags_t].T
+                )
+            )
     ln_post = ln_post.real
     if verbose:
         print(f"{ln_post:<12.1f}")
@@ -434,7 +580,7 @@ def gibbs_sample_with_fg(
             `(Ntimes, Nfreqs)`.
         flags (array_like):
             Array of flags (1 for unflagged, 0 for flagged), with shape 
-            `(Nfreqs,)`.
+            `(Ntimes, Nfreqs)` or `(Nfreqs,)`.
         S_initial (array_like):
             Initial guess for the EoR signal frequency-frequency covariance.
             A better guess should result in faster convergence.
@@ -490,12 +636,16 @@ def gibbs_sample_with_fg(
     # Get shape of data/foreground modes
     Ntimes, Nfreqs = vis.shape
     Nmodes = fgmodes.shape[1]
-    assert flags.shape == (Nfreqs,), "`flags` array must have shape (Nfreqs,)"
-    assert fgmodes.shape[0] == Nfreqs, "fgmodes must have shape (Nfreqs, Nmodes)"
+    assert flags.shape == (Ntimes, Nfreqs) or flags.shape == (Nfreqs,), (
+        "flags array must have shape (Ntimes, Nfreqs) or (Nfreqs,)"
+    )
+    assert fgmodes.shape[0] == Nfreqs, (
+        "fgmodes must have shape (Nfreqs, Nmodes)"
+    )
     if len(Ninv.shape) == 3:
-        assert (
-            Ninv.shape[0] == Ntimes
-        ), "Ninv shape must be (Ntimes, Nfreqs, Nfreqs) or (Nfreqs, Nfreqs)"
+        assert Ninv.shape[0] == Ntimes, (
+            "Ninv shape must be (Ntimes, Nfreqs, Nfreqs) or (Nfreqs, Nfreqs)"
+        )
 
     # Set up arrays for sampling
     signal_cr = np.zeros((Niter, Ntimes, Nfreqs), dtype=complex)
