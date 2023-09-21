@@ -313,6 +313,9 @@ if rank == 0:
     Nbls = len(antpairs)
 
     if args.noise_uvdata:
+        print(f"\nReading UVData compatible noise file")
+        # jsonargparse.Path_fr does not play nice with UVData.read
+        args.noise_uvdata = str(args.noise_uvdata)
         uvd_noise = UVData()
         uvd_noise.read(
             args.noise_uvdata, ant_str=args.ant_str, frequencies=freqs_to_keep
