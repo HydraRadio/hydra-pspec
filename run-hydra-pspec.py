@@ -64,6 +64,12 @@ parser.add_argument(
     help="Number of FG eigenmodes for FG model."
 )
 parser.add_argument(
+    "--fg_basis",
+    type=str,
+    help="Can be 'legendre', 'hermite', or 'chebyshev' (case-insensitive). "
+         "Determines the polynomial basis used for the FG model."
+)
+parser.add_argument(
     "--fg_eig_dir",
     type=str,
     help="Path to directory containing per-baseline FG eigenvector arrays."
@@ -374,6 +380,8 @@ if rank == 0:
 
     if args.fg_eig_dir:
         fg_eig_dir = Path(args.fg_eig_dir)
+    if not args.fg_basis:
+        args.fg_basis = 'legendre'
     all_data_weights = []
     for i_bl, antpair in enumerate(antpairs):
         bl_str = f"{antpair[0]}-{antpair[1]}"
@@ -387,9 +395,14 @@ if rank == 0:
             fgmodes = np.load(fgmodes_path)
             fgmodes = fgmodes[:, :args.Nfgmodes]
         else:
-            # Generate approximate set of FG modes from Legendre polynomials
+            if args.fg_basis.lower() == 'legendre':
+                poly_func = scipy.special.legendre
+            elif args.fg_basis.lower() == 'hermite':
+                poly_func = scipy.special.hermite
+            elif args.fg_basis.lower() == 'chebyshev':
+                poly_func = scipy.special.chebyu
             fgmodes = np.array([
-                scipy.special.legendre(i)(np.linspace(-1., 1., freqs.size))
+                poly_func(i)(np.linspace(-1., 1., freqs.size))
                 for i in range(args.Nfgmodes)
             ]).T
         
