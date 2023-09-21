@@ -476,9 +476,15 @@ def gibbs_step_fgmodes(
     model = signal_cr + fg_amps @ fgmodes.T  # np.einsum('ijk,lk->ijl', fg_amps, fgmodes)
     # Chi-squared is computed as the sum of ( |data - model| / noise )^2,
     # i.e. as a sum of standard normal random variables.
-    # FIXME: this will need to be changed to account for time-dependent
-    # flags (i.e. when we have a different N per time).
-    chisq = np.abs(vis - model)**2 * Ninv.diagonal()[None, :]
+    if len(Ninv.shape) == 2:
+        chisq = np.abs(vis - model)**2 * Ninv.diagonal()[None, :]
+    else:
+        chisq = np.zeros(vis.shape, dtype=float)
+        for i_t in range(Ninv.shape[0]):
+            chisq[i_t] = (
+                np.abs(vis[i_t] - model[i_t])**2
+                * Ninv[i_t].diagonal()[None, :]
+            )
     if verbose:
         if len(flags.shape) == 1:
             chisq_mean = chisq[:, flags].mean()
