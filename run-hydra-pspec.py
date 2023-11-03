@@ -64,12 +64,6 @@ parser.add_argument(
     help="Number of FG eigenmodes for FG model."
 )
 parser.add_argument(
-    "--fg_basis",
-    type=str,
-    help="Can be 'legendre', 'hermite', or 'chebyshev' (case-insensitive). "
-         "Determines the polynomial basis used for the FG model."
-)
-parser.add_argument(
     "--fg_eig_dir",
     type=str,
     help="Path to directory containing per-baseline FG eigenvector arrays."
@@ -116,13 +110,6 @@ parser.add_argument(
     help="If passing a directory containing per-baseline noise to --noise, "
          "--noise_file specifies the name of the file to load in each "
          "baseline's subdirectory."
-)
-parser.add_argument(
-    "--noise_uvdata",
-    type=Path_fr,
-    help="Path to a UVData readable file containing noise variance estimates. "
-         "The noise UVData file should contain the same baselines, times, "
-         "frequencies, and polarizations as the visibilities being analyzed."
 )
 parser.add_argument(
     "--noise_cov",
@@ -245,19 +232,11 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def check_shape(shape, d_shape, desc="", multiple=False):
-        if not multiple:
-            # Single permitted shape
-            assert shape == d_shape, (
-                f"The {desc} array has shape {shape} which does not match the "
-                f"shape of the per-baseline data, {d_shape}."
-            )
-        else:
-            # Multiple permitted shapes in d_shape
-            assert np.any([shape == x for x in d_shape]), (
-                f"The {desc} array has shape {shape} which does not match any "
-                f"of the allowed shapes, {d_shape}."
-            )
+def check_shape(shape, d_shape, desc=""):
+        assert shape == d_shape, (
+            f"The {desc} array has shape {shape} which does not match the "
+            f"shape of the per-baseline data, {d_shape}."
+        )
 
 def check_load_path(fp):
         """
@@ -312,22 +291,6 @@ if rank == 0:
     antpairs = uvd.get_antpairs()[:size]
     Nbls = len(antpairs)
 
-    if args.noise_uvdata:
-        print(f"\nReading UVData compatible noise file")
-        # jsonargparse.Path_fr does not play nice with UVData.read
-        args.noise_uvdata = str(args.noise_uvdata)
-        uvd_noise = UVData()
-        uvd_noise.read(
-            args.noise_uvdata, ant_str=args.ant_str, frequencies=freqs_to_keep
-        )
-        uvd_noise.conjugate_bls()
-        # The data_array of uvd_noise should contain estimates of the variance
-        # of the noise as a function of time, frequency, and polarization.
-        # Forming pI vis equates to summing polarizations.  We thus sum the
-        # variances of each polarization to get an estimate of the variance of
-        # the pI noise.
-        uvd_noise = form_pseudo_stokes_vis(uvd_noise)
-
     freqs = Quantity(uvd.freq_array[0], unit="Hz")
     freq_str = (
         f"{freqs.min().to('MHz').value:.3f}-"
@@ -344,12 +307,7 @@ if rank == 0:
     print(f"\nnproc = {nproc}")
 
     bl_data_shape = (uvd.Ntimes, uvd.Nfreqs)
-    # Frequency covariance matrices can either be a single (Nfreqs, Nfreqs)
-    # matrix or be a time-dependent estimate of the covariance with shape
-    # (Ntimes, Nfreqs, Nfreqs)
-    cov_ff_shapes = [
-        (uvd.Nfreqs, uvd.Nfreqs), (uvd.Ntimes, uvd.Nfreqs, uvd.Nfreqs)
-    ]
+    cov_ff_shape = (uvd.Nfreqs, uvd.Nfreqs)
     if args.flags:
         flags_path = Path(args.flags)
         flags_path_is_dir, flags = check_load_path(flags_path)
@@ -369,22 +327,15 @@ if rank == 0:
         sigcov0_path = Path(args.sigcov0)
         sigcov0_path_is_dir, sigcov0 = check_load_path(sigcov0_path)
         if not sigcov0_path_is_dir:
-            check_shape(
-                sigcov0.shape, cov_ff_shapes[0], desc="signal covariance"
-            )
+            check_shape(sigcov0.shape, cov_ff_shape, desc="signal covariance")
     if args.noise_cov:
         noise_cov_path = Path(args.noise_cov)
         noise_cov_path_is_dir, noise_cov = check_load_path(noise_cov_path)
         if not noise_cov_path_is_dir:
-            check_shape(
-                noise_cov.shape, cov_ff_shapes, multiple=True,
-                desc="noise covariance"
-            )
+            check_shape(noise_cov.shape, cov_ff_shape, desc="noise covariance")
 
     if args.fg_eig_dir:
         fg_eig_dir = Path(args.fg_eig_dir)
-    if not args.fg_basis:
-        args.fg_basis = 'legendre'
     all_data_weights = []
     for i_bl, antpair in enumerate(antpairs):
         bl_str = f"{antpair[0]}-{antpair[1]}"
@@ -398,14 +349,9 @@ if rank == 0:
             fgmodes = np.load(fgmodes_path)
             fgmodes = fgmodes[:, :args.Nfgmodes]
         else:
-            if args.fg_basis.lower() == 'legendre':
-                poly_func = scipy.special.legendre
-            elif args.fg_basis.lower() == 'hermite':
-                poly_func = scipy.special.hermite
-            elif args.fg_basis.lower() == 'chebyshev':
-                poly_func = scipy.special.chebyu
+            # Generate approximate set of FG modes from Legendre polynomials
             fgmodes = np.array([
-                poly_func(i)(np.linspace(-1., 1., freqs.size))
+                scipy.special.legendre(i)(np.linspace(-1., 1., freqs.size))
                 for i in range(args.Nfgmodes)
             ]).T
         
@@ -413,14 +359,14 @@ if rank == 0:
             bl_sigcov0_path = sigcov0_path / bl_str / args.sigcov0_file
             sigcov0 = np.load(bl_sigcov0_path)
             check_shape(
-                sigcov0.shape, cov_ff_shapes[0],
+                sigcov0.shape, cov_ff_shape,
                 desc=f"signal covariance ({bl_str})"
             )
         if args.noise_cov and noise_cov_path_is_dir:
             bl_noise_cov_path = noise_cov_path / bl_str / args.noise_cov_file
             noise_cov = np.load(bl_noise_cov_path)
             check_shape(
-                noise_cov.shape, cov_ff_shapes, multiple=True,
+                noise_cov.shape, cov_ff_shape,
                 desc=f"noise covariance ({bl_str})"
             )
         
@@ -430,7 +376,6 @@ if rank == 0:
             flags = np.load(bl_flags_path)
             check_shape(flags.shape, d.shape, desc=f"flags ({bl_str})")
         elif not args.flags:
-            # FIXME: what happens if the flags differ for XX and YY pols?
             flags = uvd.get_flags(antpair + ("xx",))
 
         if args.nsamples and nsamples_path_is_dir:
@@ -460,12 +405,6 @@ if rank == 0:
             bl_data_weights["S_initial"] = sigcov0
         if args.noise_cov:
             bl_data_weights["N"] = noise_cov
-        elif args.noise_uvdata:
-            noise_var = uvd_noise.get_data(antpair + ("xx",))
-            noise_cov = np.zeros((uvd.Ntimes, uvd.Nfreqs, uvd.Nfreqs))
-            for i_t in range(uvd.Ntimes):
-                noise_cov[i_t] = np.diag(noise_var[i_t].real)
-            bl_data_weights["N"] = noise_cov
         all_data_weights.append(bl_data_weights)
 else:
     all_data_weights = None
@@ -474,9 +413,6 @@ else:
 data = comm.scatter(all_data_weights)
 bl = data["bl"]
 d = data["d"]
-# In flagged data, flags are typically True where the data is flagged, but we
-# want a set of weights which is 1 for unflagged data and 0 for flagged data.
-# We thus compute the weights as the logical not of the flags from the data.
 w = ~data["w"]
 fgmodes = data["fgmodes"]
 freq_str = data["freq_str"]
@@ -491,14 +427,7 @@ else:
     S_initial = np.eye(Nfreqs)
 
 if "N" in data:
-    if len(data["N"].shape) == 2:
-        # Noise covariance has shape (Nfreqs, Nfreqs)
-        Ninv = np.linalg.inv(data["N"])
-    elif len(data["N"].shape) == 3:
-        # Noise covariance has shape (Ntimes, Nfreqs, Nfreqs)
-        Ninv = np.zeros_like(data["N"])
-        for i_t in range(data["N"].shape[0]):
-            Ninv[i_t] = np.linalg.inv(data["N"][i_t])
+    Ninv = np.linalg.inv(data["N"])
 else:
     # Simple guess for noise variance
     Ninv = np.eye(Nfreqs)
@@ -559,7 +488,7 @@ start = time.time()
 signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post = \
     hp.pspec.gibbs_sample_with_fg(
         d,
-        w,
+        w[0],  # FIXME
         S_initial,
         fgmodes,
         Ninv,
@@ -598,3 +527,4 @@ elapsed = time.time() - start
 #     elif times_avg.value > 60:
 #         times_avg = times_avg.to("min")
 #     print(f"Average evaluation time for {args.Niter} iterations: {times_avg}")
+
