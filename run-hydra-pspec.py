@@ -7,6 +7,7 @@ from pprint import pprint
 import os
 import time
 import sys
+import json
 
 from jsonargparse import ArgumentParser, ActionConfigFile
 from jsonargparse.typing import Path_fr, Path_dw
@@ -16,7 +17,10 @@ from astropy.units import Quantity
 
 import hydra_pspec as hp
 from hydra_pspec.utils import (
-    form_pseudo_stokes_vis, filter_freqs, get_git_version_info
+    form_pseudo_stokes_vis,
+    filter_freqs,
+    get_git_version_info,
+    add_mtime_to_filepath
 )
 
 try:
@@ -197,13 +201,15 @@ parser.add_argument(
 parser.add_argument(
     "--out_dir",
     type=Path_dw,
-    help="Path to directory for writing output(s)."
+    default="./",
+    help="Path to directory for writing output(s).  Defaults to './'."
 )
 parser.add_argument(
-    "--filename",
+    "--dirname",
     type=str,
-    help="Filename for output(s).  Defaults to "
-         "f'results-{freqs.min()}-{freqs.max()}MHz-Niter-{Niter}.npy'."
+    help="Name of subdirectory for output(s).  Files will be written to "
+         "`Path(args.out_dir) / args.dirname`.  Defaults to "
+         "f'results-{freqs.min()}-{freqs.max()}MHz-Niter-{Niter}'."
 )
 parser.add_argument(
     "--clobber",
@@ -447,37 +453,31 @@ if args.ps_prior_lo != 0 or args.ps_prior_hi != 0:
     ps_prior[1, ps_prior_inds] = args.ps_prior_lo
 
 # Output file set up
-if args.out_dir:
-    out_dir = args.out_dir
+out_dir = Path(args.out_dir)
+if not args.dirname:
+    out_dir /= f"results-{freq_str}-Niter-{args.Niter}"
 else:
-    out_dir = "./"
-out_dir = Path(out_dir)
-if rank == 0:
-    print(f"\nWriting output(s) to {out_dir.absolute()}", end="\n\n")
-if not args.filename:
-    out_file = f"results-{freq_str}-Niter-{args.Niter}.npy"
-else:
-    out_file = args.filename
-    if not out_file.endswith('.npy'):
-        out_file += '.npy'
-if args.map_estimate:
-    out_file = out_file.replace('.npy', '-map-estimate.npy')
-out_path = (
-    out_dir
-    / f"{bl[0]}-{bl[1]}"
-    / out_file
-)
-out_path.parent.mkdir(exist_ok=True)
+    if args.map_estimate:
+        out_dir /= args.dirname + "-map-estimate"
+    else:
+        out_dir /= args.dirname
+if out_dir.exists() and not args.clobber:
+    # Check for existing output files to avoid overwriting if clobber=False
+    add_mtime_to_filepath(out_dir)
+out_dir /= f"{bl[0]}-{bl[1]}"
+out_dir.mkdir(exist_ok=True, parents=True)
 # Catalog git version
 try:
     git_info = get_git_version_info()
 except:
     git_info = None
-out_dict = {
-    "samples": None,
-    "git": git_info,
-    "args": args
-}
+with open(out_dir / "git.json", "w") as f:
+    # Catalog git version info
+    json.dump(git_info, f)
+# Catalog command line arguments
+parser.save(args, out_dir / "args.json", format="json", skip_none=False)
+if rank == 0:
+    print(f"\nWriting output(s) to {out_dir.absolute()}", end="\n\n")
 
 # Run Gibbs sampler
 # signal_cr = (Niter, Ntimes, Nfreqs) [complex]
@@ -499,9 +499,7 @@ signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post = \
         verbose=args.verbose,
         nproc=nproc,
         write_Niter=args.write_Niter,
-        out_path=out_path,
-        out_dict=out_dict,
-        clobber=args.clobber
+        out_dir=out_dir
     )
 elapsed = time.time() - start
 

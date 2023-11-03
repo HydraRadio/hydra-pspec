@@ -415,9 +415,7 @@ def gibbs_sample_with_fg(
     verbose=True,
     nproc=1,
     write_Niter=100,
-    out_path=None,
-    out_dict=None,
-    clobber=False,
+    out_dir=None,
     map_estimate=False
 ):
     """
@@ -458,13 +456,9 @@ def gibbs_sample_with_fg(
             Number of processes to use for parallelised functions.
         write_Niter (int):
             Number of iterations between output file writing.
-        out_path (str or Path):
-            File path where output will be saved to disk.
-        out_dict (dict):
-            Dictionary containing samples, git version info, and analysis args
-            to be written to disk if out_path is not None.
-        clobber (bool):
-            Clobber existing files.
+        out_dir (str or Path):
+            Directory where samples will be saved to disk.  If None (default),
+            samples are not written to disk.
         map_estimate (bool):
             Provide the maximum a posteriori sample only, i.e. sets
             `Niter = 1`.
@@ -480,9 +474,15 @@ def gibbs_sample_with_fg(
             `(Niter, Nfreqs)`.
         fg_amps (array_like):
             Samples of the foreground amplitudes, shape `(Niter, Nmodes)`.
+        chisq (array_like):
+            Chi-squared value per iteration, shape `(Niter, Ntimes, Nfreqs)`.
+        ln_post (array_like):
+            Natural log of the posterior probability per iteration, shape
+            `(Niter,)`.
     """
     if map_estimate:
         Niter = 1
+        write_Niter = 1
     else:
         # Set random seed
         np.random.seed(seed)
@@ -532,40 +532,29 @@ def gibbs_sample_with_fg(
                 verbose=verbose
             )
 
-        if (i+1) % write_Niter == 0:
+        if out_dir is not None and (i+1) % write_Niter == 0:
             # Write current set of samples to disk
-            if out_path is not None:
-                if out_dict is None:
-                    out_dict = {}
-                out_dict.update({
-                    "samples": {
-                        "signal_cr": signal_cr[:i+1],
-                        "signal_S": signal_S,
-                        "signal_ps": signal_ps[:i+1],
-                        "fg_amps": fg_amps[:i+1],
-                        "chisq": chisq[:i+1],
-                        "ln_post": ln_post[:i+1]
-                    }
-                })
-                if (i+1) == 2*write_Niter:
-                    # Don't initially clobber any files if clobber = False
-                    # Only clobber after writing to disk for the 1st time
-                    clobber = True
-                utils.write_numpy_file(out_path, out_dict, clobber=clobber)
+            utils.write_numpy_files(
+                out_dir,
+                signal_cr,
+                signal_S,
+                signal_ps,
+                fg_amps,
+                chisq,
+                ln_post
+            )
     
-    if out_path is not None:
+    if out_dir is not None and Niter % write_Niter > 0:
         # Write all samples to disk
-        out_dict.update({
-            "samples": {
-                "signal_cr": signal_cr,
-                "signal_S": signal_S,
-                "signal_ps": signal_ps,
-                "fg_amps": fg_amps,
-                "chisq": chisq,
-                "ln_post": ln_post
-            }
-        })
-        utils.write_numpy_file(out_path, out_dict, clobber=True)
+        utils.write_numpy_files(
+            out_dir,
+            signal_cr,
+            signal_S,
+            signal_ps,
+            fg_amps,
+            chisq,
+            ln_post
+        )
 
     if verbose:
         print()

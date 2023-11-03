@@ -239,39 +239,69 @@ def get_git_version_info(directory=None):
     return version_info
 
 
-def add_mtime_to_filename(fp, join_char="-"):
+def add_mtime_to_filepath(fp, join_char="-"):
     """
-    Appends the mtime to a filename before the file suffix.
+    Appends the mtime to a filename or directory before the file suffix.
 
     Modifies the existing file on disk.
 
     Parameters
     ----------
     fp : str or Path
-        Path to file.
+        Path to file or directory.
+    join_char : str
+        Character used to append mtime to filename or directory.  
+        Defaults to '-'.
 
     """
     if not isinstance(fp, Path):
         fp = Path(fp)
     mtime = datetime.fromtimestamp(os.path.getmtime(fp))
     mtime = mtime.isoformat()
-    fp.rename(fp.with_stem(f"{fp.stem}{join_char}{mtime}"))
+    if fp.is_file():
+        fp.rename(fp.with_stem(f"{fp.stem}{join_char}{mtime}"))
+    elif fp.is_dir():
+        fp.rename(fp.with_name(f"{fp.name}{join_char}{mtime}"))
 
 
-def write_numpy_file(fp, arr, clobber=False):
+def write_numpy_files(
+    fp,
+    signal_cr,
+    signal_S,
+    signal_ps,
+    fg_amps,
+    chisq,
+    ln_post
+):
     """
-    Write a numpy file to disk with checks for existing files.
+    Write sampling arrays to disk as numpy files.
 
     Parameters
     ----------
     fp : str or Path
-        Path to file.
-    clobber : bool
-        If True, overwrite file if it exists.
+        Output directory for files.
+    signal_cr (array_like):
+        Samples of the signal, shape `(Niter, Ntimes, Nfreqs)`.
+    signal_S (array_like):
+        Samples of the signal covariance, shape `(Niter, Nfreqs, Nfreqs)`.
+        These are simply transformations of the power spectrum.
+    signal_ps (array_like):
+        Sample of the signal power spectrum bandpowers, shape
+        `(Niter, Nfreqs)`.
+    fg_amps (array_like):
+        Samples of the foreground amplitudes, shape `(Niter, Nmodes)`.
+    chisq (array_like):
+        Chi-squared value per iteration, shape `(Niter, Ntimes, Nfreqs)`.
+    ln_post (array_like):
+        Natural log of the posterior probability per iteration, shape
+        `(Niter,)`.
 
     """
     if not isinstance(fp, Path):
         fp = Path(fp)
-    if fp.exists() and not clobber:
-        add_mtime_to_filename(fp)
-    np.save(fp, arr)
+    np.save(fp / f"gcr-eor.npy", signal_cr)
+    np.save(fp / f"cov-eor.npy", signal_S)
+    np.save(fp / f"dps-eor.npy", signal_ps)
+    np.save(fp / f"fg-amps.npy", fg_amps)
+    np.save(fp / f"chisq.npy", chisq)
+    np.save(fp / f"ln-post.npy", ln_post)
