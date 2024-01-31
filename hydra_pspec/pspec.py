@@ -5,7 +5,7 @@ from scipy.signal.windows import blackmanharris as BH
 from scipy.stats import invgamma
 from scipy.optimize import minimize, Bounds
 
-from multiprocess import Pool
+from multiprocess import Pool, current_process
 from . import utils
 import os, time
 
@@ -86,12 +86,16 @@ def sprior(signals, bins, factor):
 
 
 def gcr_fgmodes_1d(
-    vis, w, matrices, fgmodes, f0=None, map_estimate=False, verbose=False
+    idx, vis, w, matrices, fgmodes, f0=None, map_estimate=False, verbose=False,
+    multiprocess_seed=912983
 ):
     """
     Perform the GCR step on a single time sample.
 
     Parameters:
+        idx (int):
+            Time index.  Used to generate a unique random seed for each process
+            if using `multiprocess.Pool` and multiple processes.
         vis (array_like):
             Array of complex visibilities for a single baseline, of shape
             `(Ntimes, Nfreqs)`.
@@ -109,8 +113,26 @@ def gcr_fgmodes_1d(
             Provide the maximum a posteriori sample.
         verbose (bool):
             If True, output basic timing stats about each iteration.
+        multiprocess_seed (int):
+            Reference random seed used for all processes and time indices.
+            Used to generate a unique random seed for each spawned process and
+            each time index.  Defaults to 912983.
 
     """
+    # If multiple process are spawned via `multiprocess.Pool`, each process
+    # inherits the random seed of the parent process.  We need to set a unique
+    # seed per process to avoid spurious correlations between GCRs at different
+    # time indices.  We can do so using the process ID (PID, unique per
+    # process) and time index (unique for each time).  For fewer than 1000
+    # processes, we can guarantee a unique random seed by summing the
+    # multiprocess_seed (a reference seed which is fixed for all processes and
+    # times), the PID*1000, and the time index.
+    # WARNING: if more than 1000 processes is every used this sum will not
+    # guarantee a unique seed for each process!
+    pid = current_process().pid
+    seed = multiprocess_seed + pid*1000 + idx
+    np.random.seed(seed)
+
     Nfreqs, Nmodes = fgmodes.shape
     d = vis.reshape((1, max(Nfreqs, len(vis.T))))
 
@@ -201,6 +223,7 @@ def gcr_fgmodes(
     with Pool(nproc) as pool:
         samples, residuals, info = zip(*pool.map(
             lambda idx: gcr_fgmodes_1d(
+                idx=idx,
                 vis=vis[idx],
                 w=w,
                 matrices=matrices,
