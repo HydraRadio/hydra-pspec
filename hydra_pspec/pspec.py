@@ -64,15 +64,14 @@ def sample_S(s=None, sk=None, prior=None):
             # value of the shape parameter (alpha) by 1.  With a log-uniform
             # prior, we thus sample from an inverse gamma distribution with
             # shape parameter alpha + 1.
-            x[i] = invgamma.rvs(a=alpha+1)
+            x[i] = invgamma.rvs(a=alpha+1) * beta[i]
             outside_prior = x[i] > prior[0, i] or x[i] < prior[1, i]
             if outside_prior:
                 # Resample until we obtain a sample within the prior bounds
                 while x[i] > prior[0, i] or x[i] < prior[1, i]:
-                    x[i] = invgamma.rvs(a=alpha+1)
+                    x[i] = invgamma.rvs(a=alpha+1) * beta[i]
         else:
-            x[i] = invgamma.rvs(a=alpha)
-    x *=  beta
+            x[i] = invgamma.rvs(a=alpha) * beta[i]
 
     return x
 
