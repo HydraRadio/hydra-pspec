@@ -104,7 +104,7 @@ def gcr_fgmodes_1d(
         matrices (array_like):
             Array containing precomputed matrices needed by the linear system.
         fgmodes (array_like):
-            Foreground mode array, of shape (Nmodes, Nfreqs). This should be
+            Foreground mode array, of shape (Nfreqs, Nmodes). This should be
             derived from a PCA decomposition of a model foreground covariance
             matrix or similar.
         f0 (array_like):
@@ -189,7 +189,7 @@ def gcr_fgmodes(
         matrices (array_like):
             Array containing precomputed matrices needed by the linear system.
         fgmodes (array_like):
-            Foreground mode array, of shape (Nmodes, Nfreqs). This should be
+            Foreground mode array, of shape (Nfreqs, Nmodes). This should be
             derived from a PCA decomposition of a model foreground covariance
             matrix or similar.
         fourier_op (array_like):
