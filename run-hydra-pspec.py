@@ -53,15 +53,17 @@ parser.add_argument(
     help="Number of FG eigenmodes for FG model."
 )
 parser.add_argument(
-    "--fg_eig_dir",
+    "--fgmodes",
     type=str,
-    help="Path to directory containing per-baseline FG eigenvector arrays."
+    help="Path to a single file or a directory containing per-baseline FG "
+         "model basis vector arrays with shape (Nfreqs, Nmodes).  Files must "
+         "be readable by `np.load`."
 )
 parser.add_argument(
-    "--fg_eig_file",
+    "--fgmodes_file",
     type=str,
     help="If passing a directory containing per-baseline FG eigenvectors to "
-         "--fg_eig_dir, --fg_eig_file specifies the name of the file to load "
+         "--fgmodes, --fgmodes_file specifies the name of the file to load "
          " in each baseline's subdirectory."
 )
 parser.add_argument(
@@ -284,7 +286,6 @@ if args.file_paths:
     uvd = form_pseudo_stokes_vis(uvd)
 antpair = uvd.get_antpairs()[0]
 bl_str = f"{antpair[0]}-{antpair[1]}"
-Ntimes = uvd.Ntimes
 Nfreqs = uvd.Nfreqs
 
 freqs = uvd.freq_array
@@ -296,81 +297,21 @@ freq_str = (
     + f"{freqs.max().to('MHz').value:.3f}MHz"
 )
 
-bl_data_shape = (Ntimes, Nfreqs)
+# Get visibility data with shape (Ntimes, Nfreqs)
+# pI visibilities stored in the XX polarization
+d = uvd.get_data(antpair + ("xx",), force_copy=True)
+
+bl_data_shape = d.shape
 cov_ff_shape = (Nfreqs, Nfreqs)
+fgmodes_shape = (Nfreqs, args.Nfgmodes)
+
 if args.flags:
     flags_path = Path(args.flags)
     flags_path_is_dir, flags = check_load_path(flags_path)
-    if not flags_path_is_dir:
-        check_shape(flags.shape, bl_data_shape, desc="flags")
-if args.noise:
-    noise_path = Path(args.noise)
-    noise_path_is_dir, noise = check_load_path(noise_path)
-    if not noise_path_is_dir:
-        check_shape(noise.shape, bl_data_shape, desc="noise")
-if args.nsamples:
-    nsamples_path = Path(args.nsamples)
-    nsamples_path_is_dir, nsamples = check_load_path(nsamples_path)
-    if not nsamples_path_is_dir:
-        check_shape(nsamples.shape, bl_data_shape, desc="nsamples")
-if args.sigcov0:
-    sigcov0_path = Path(args.sigcov0)
-    sigcov0_path_is_dir, sigcov0 = check_load_path(sigcov0_path)
-    if not sigcov0_path_is_dir:
-        check_shape(sigcov0.shape, cov_ff_shape, desc="signal covariance")
-if args.noise_cov:
-    noise_cov_path = Path(args.noise_cov)
-    noise_cov_path_is_dir, noise_cov = check_load_path(noise_cov_path)
-    if not noise_cov_path_is_dir:
-        check_shape(noise_cov.shape, cov_ff_shape, desc="noise covariance")
-if args.fg_eig_dir:
-    fg_eig_dir = Path(args.fg_eig_dir)
-
-if args.fg_eig_dir:
-    # fgmodes has shape (Nfreqs, Nfgmodes)
-    if not args.fg_eig_file:
-        # Look for a file with the default filename from
-        # hydra-pspec/scripts/calc-vis-cov-matrices.py
-        fgmodes_path = fg_eig_dir / bl_str / f"evecs-{freq_str}.npy"
-    else:
-        fgmodes_path = fg_eig_dir / bl_str / args.fg_eig_file
-    fgmodes = np.load(fgmodes_path)
-    fgmodes = fgmodes[:, :args.Nfgmodes]
-else:
-    # Generate approximate set of FG modes from Legendre polynomials
-    fgmodes = np.array([
-        scipy.special.legendre(i)(np.linspace(-1., 1., freqs.size))
-        for i in range(args.Nfgmodes)
-    ]).T
-
-if args.sigcov0:
-    if sigcov0_path_is_dir:
-        bl_sigcov0_path = sigcov0_path / bl_str / args.sigcov0_file
-        sigcov0 = np.load(bl_sigcov0_path)
-        check_shape(
-            sigcov0.shape, cov_ff_shape, desc=f"signal covariance ({bl_str})"
-        )
-else:
-    sigcov0 = np.eye(Nfreqs)
-
-if args.noise_cov:
-    if noise_cov_path_is_dir:
-        bl_noise_cov_path = noise_cov_path / bl_str / args.noise_cov_file
-        noise_cov = np.load(bl_noise_cov_path)
-        check_shape(
-            noise_cov.shape, cov_ff_shape, desc=f"noise covariance ({bl_str})"
-        )
-    Ninv = np.linalg.inv(noise_cov)
-else:
-    Ninv = np.eye(Nfreqs)
-
-# pI visibilities stored in the XX polarization
-d = uvd.get_data(antpair + ("xx",), force_copy=True)
-if args.flags:
     if flags_path_is_dir:
         bl_flags_path = flags_path / bl_str / args.flags_file
         flags = np.load(bl_flags_path)
-        check_shape(flags.shape, d.shape, desc=f"flags ({bl_str})")
+    check_shape(flags.shape, bl_data_shape, desc=f"flags")
 else:
     # FIXME: there is nothing currently in place to handle flags which differ
     # between XX and YY polarizations in `form_pseudo_stokes_vis`.  Differing
@@ -378,21 +319,67 @@ else:
     flags = uvd.get_flags(antpair + ("xx",))
 
 if args.nsamples:
+    nsamples_path = Path(args.nsamples)
+    nsamples_path_is_dir, nsamples = check_load_path(nsamples_path)
     if nsamples_path_is_dir:
         bl_nsamples_path = nsamples_path / bl_str / args.nsamples_file
         nsamples = np.load(bl_nsamples_path)
-        check_shape(nsamples.shape, d.shape, desc=f"nsamples ({bl_str})")
+    check_shape(nsamples.shape, bl_data_shape, desc=f"nsamples")
 else:
     nsamples = None
 
 if args.noise:
+    noise_path = Path(args.noise)
+    noise_path_is_dir, noise = check_load_path(noise_path)
     if noise_path_is_dir:
         bl_noise_path = noise_path / bl_str / args.noise_file
         noise = np.load(bl_noise_path)
-        check_shape(noise.shape, d.shape, desc=f"noise ({bl_str})")
+    check_shape(noise.shape, bl_data_shape, desc=f"noise")
     if nsamples is not None:
         noise /= np.sqrt(nsamples)
+    # If passing an array of noise, there is assumed to be no noise in the data
     d += noise
+
+if args.sigcov0:
+    sigcov0_path = Path(args.sigcov0)
+    sigcov0_path_is_dir, sigcov0 = check_load_path(sigcov0_path)
+    if sigcov0_path_is_dir:
+        bl_sigcov0_path = sigcov0_path / bl_str / args.sigcov0_file
+        sigcov0 = np.load(bl_sigcov0_path)
+    check_shape(sigcov0.shape, cov_ff_shape, desc="signal covariance")
+else:
+    sigcov0 = np.eye(Nfreqs)
+
+if args.noise_cov:
+    noise_cov_path = Path(args.noise_cov)
+    noise_cov_path_is_dir, noise_cov = check_load_path(noise_cov_path)
+    if noise_cov_path_is_dir:
+        bl_noise_cov_path = noise_cov_path / bl_str / args.noise_cov_file
+        noise_cov = np.load(bl_noise_cov_path)
+    check_shape(noise_cov.shape, cov_ff_shape, desc="noise covariance")
+    Ninv = np.linalg.inv(noise_cov)
+else:
+    Ninv = np.eye(Nfreqs)
+
+if args.fgmodes:
+    fgmodes_path = Path(args.fgmodes)
+    fgmodes_path_is_dir, fgmodes = check_load_path(fgmodes_path)
+    if fgmodes_path_is_dir:
+        if not args.fgmodes_file:
+            # Look for a file with the default filename from
+            # hydra-pspec/scripts/calc-vis-cov-matrices.py
+            fgmodes_path = fgmodes_path / bl_str / f"evecs-{freq_str}.npy"
+        else:
+            fgmodes_path = fgmodes_path / bl_str / args.fgmodes_file
+        fgmodes = np.load(fgmodes_path)
+    fgmodes = fgmodes[:, :args.Nfgmodes]
+    check_shape(fgmodes.shape, fgmodes_shape, desc="fgmodes")
+else:
+    # Generate approximate set of FG modes from Legendre polynomials
+    fgmodes = np.array([
+        scipy.special.legendre(i)(np.linspace(-1., 1., freqs.size))
+        for i in range(args.Nfgmodes)
+    ]).T
 
 # Power spectrum prior
 # This has shape (2, Ndelays). The first dimension is for the upper and
