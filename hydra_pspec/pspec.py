@@ -559,12 +559,12 @@ def gibbs_sample_with_fg(
             # Write current set of samples to disk
             utils.write_numpy_files(
                 out_dir,
-                signal_cr,
-                signal_S,
-                signal_ps,
-                fg_amps,
-                chisq,
-                ln_post
+                signal_cr[:i+1],
+                signal_S[:i+1],
+                signal_ps[:i+1],
+                fg_amps[:i+1],
+                chisq[:i+1],
+                ln_post[:i+1]
             )
     
     if out_dir is not None and Niter % write_Niter > 0:
