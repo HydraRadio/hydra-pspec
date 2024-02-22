@@ -1,0 +1,11 @@
+name: hydra-pspec
+channels:
+  - conda-forge
+dependencies:
+  - numpy
+  - mkl
+  - scipy
+  - matplotlib
+  - mpi4py
+  - multiprocess
+  - jsonargparse

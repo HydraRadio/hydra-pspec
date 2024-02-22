@@ -1,0 +1,23 @@
+# Analysis params
+ant_str: '0_1'
+seed: 7123689
+Niter: 1000
+Nproc: 2
+verbose: True
+ps_prior_lo: 0.1
+ps_prior_hi: 2
+n_ps_prior_bins: 3
+# Write params
+dirname: results-seed-7123689-Niter-1000
+clobber: False
+# Signal model
+sigcov0: ./eor-cov.npy
+# FG model
+Nfgmodes: 12
+fgmodes: ./fgmodes.npy
+# Noise
+noise: ./noise.npy
+noise_cov: ./noise-cov.npy
+# Input files
+file_paths:
+- ./vis-eor-fgs.uvh5
