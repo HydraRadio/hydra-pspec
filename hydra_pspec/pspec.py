@@ -41,26 +41,38 @@ def sample_S(s=None, sk=None, prior=None):
         sk = np.fft.fftshift(sk, axes=axes)
     Nobs, Nfreqs = sk.shape
 
+    if prior is None:
+        prior = np.zeros((2, Nfreqs), dtype=float)
+
+    # The scale parameter for the inverse gamma distribution (beta) is
+    # equivalent to (Ntimes - 1) times the variance over the time axis of the
+    # delay spectrum of the Gaussian Constrained Realization of the EoR
     beta = np.sum(sk * sk.conj(), axis=0).real
     # The shape parameter (alpha) differs from that used in Eriksen et al. 2008
     # i.e. `alpha = Nobs/2 - 1` because our data vector is complex and has
     # twice as many numbers as a purely real data vector
     alpha = Nobs - 1.0
 
+    # We obtain samples of the power spectrum (x) by instead sampling the random
+    # variable y = x / beta and then obtain x via x = y * beta
     x = np.zeros(Nfreqs)
     for i in range(Nfreqs):
-        x[i] = invgamma.rvs(a=alpha) * beta[i]  # y = x / beta
+        if np.any(prior[:, i] > 0):
+            # The pdf for a log-uniform prior is proportional to 1 / x.
+            # Multiplying the inverse gamma likelihood by this prior results
+            # in an additional factor of 1 / x which increases the effective
+            # value of the shape parameter (alpha) by 1.  With a log-uniform
+            # prior, we thus sample from an inverse gamma distribution with
+            # shape parameter alpha + 1.
+            x[i] = invgamma.rvs(a=alpha+1) * beta[i]
+            outside_prior = x[i] > prior[0, i] or x[i] < prior[1, i]
+            if outside_prior:
+                # Resample until we obtain a sample within the prior bounds
+                while x[i] > prior[0, i] or x[i] < prior[1, i]:
+                    x[i] = invgamma.rvs(a=alpha+1) * beta[i]
+        else:
+            x[i] = invgamma.rvs(a=alpha) * beta[i]
 
-    # Set prior
-    if prior is not None:
-        for i in range(Nfreqs):
-            if prior[0, i] == 0:
-                continue
-            else:
-                if x[i] > prior[0, i]:
-                    x[i] = prior[0, i]
-                if x[i] < prior[1, i]:
-                    x[i] = prior[1, i]
     return x
 
 
