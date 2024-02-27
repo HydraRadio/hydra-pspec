@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+requires-python = ">= 3.8"
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hydra-pspec"
+version = "0.0.0"
+dependencies = ["numpy", "scipy", "multiprocess", "pyuvdata", "astropy", "jsonargparse"]
+
+[tool.setuptools]
+py-modules = ['dpss', 'utils', 'oqe', 'pspec', 'lssa']
