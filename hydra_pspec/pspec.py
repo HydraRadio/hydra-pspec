@@ -174,7 +174,7 @@ def gcr_fgmodes_1d(
     x0 = None
     if f0 is not None:
         x0 = np.concatenate((np.zeros(Nfreqs, dtype=complex), f0))
-    xsoln, info = sp.sparse.linalg.cg(A, b, maxiter=1e5, x0=x0, M=Ai)
+    xsoln, info = sp.sparse.linalg.cg(A, b, maxiter=int(1e5), x0=x0, M=Ai)
     if verbose:
         residual = np.abs(A @ xsoln - b[:, 0]).mean()
     else:
