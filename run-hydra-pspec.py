@@ -415,6 +415,22 @@ if rank == 0:
 else:
     all_data_weights = None
 
+# Output file set up
+out_dir = Path(args.out_dir)
+if not args.dirname:
+    out_dir /= f"results-{freq_str}-Niter-{args.Niter}"
+else:
+    if args.map_estimate:
+        out_dir /= args.dirname + "-map-estimate"
+    else:
+        out_dir /= args.dirname
+
+if rank == 0:
+    if out_dir.exists() and not args.clobber:
+        # Check for existing output files to avoid overwriting if clobber=False
+        add_mtime_to_filepath(out_dir)
+    out_dir.mkdir(exist_ok=True, parents=True)
+
 # Send per-baseline visibilities to each process
 data = comm.scatter(all_data_weights)
 bl = data["bl"]
@@ -452,18 +468,7 @@ if args.ps_prior_lo != 0 or args.ps_prior_hi != 0:
     ps_prior[0, ps_prior_inds] = args.ps_prior_hi
     ps_prior[1, ps_prior_inds] = args.ps_prior_lo
 
-# Output file set up
-out_dir = Path(args.out_dir)
-if not args.dirname:
-    out_dir /= f"results-{freq_str}-Niter-{args.Niter}"
-else:
-    if args.map_estimate:
-        out_dir /= args.dirname + "-map-estimate"
-    else:
-        out_dir /= args.dirname
-if out_dir.exists() and not args.clobber:
-    # Check for existing output files to avoid overwriting if clobber=False
-    add_mtime_to_filepath(out_dir)
+
 out_dir /= f"{bl[0]}-{bl[1]}"
 out_dir.mkdir(exist_ok=True, parents=True)
 # Catalog git version
