@@ -8,6 +8,7 @@ from astropy.units import Quantity
 import ast
 import subprocess
 import os
+import shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -261,7 +262,11 @@ def add_mtime_to_filepath(fp, join_char="-"):
     if fp.is_file():
         fp.rename(fp.with_stem(f"{fp.stem}{join_char}{mtime}"))
     elif fp.is_dir():
-        fp.rename(fp.with_name(f"{fp.name}{join_char}{mtime}"))
+        shutil.move(
+            fp,
+            fp.with_name(f"{fp.name}{join_char}{mtime}")
+        )
+
 
 
 def write_numpy_files(
