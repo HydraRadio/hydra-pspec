@@ -15,8 +15,8 @@ sigcov0: "./test-data/eor-cov/"
 sigcov0_file: "cov.npy"
 # FG model
 Nfgmodes: 12
-fg_eig_dir: "./test-data/fgmodes/"
-fg_eig_file: "fgmodes.npy"
+fgmodes: "./test-data/fgmodes/"
+fgmodes_file: "fgmodes.npy"
 # Noise
 noise: "./test-data/noise/"
 noise_file: "noise.npy"
