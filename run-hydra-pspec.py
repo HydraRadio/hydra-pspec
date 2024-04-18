@@ -264,6 +264,21 @@ def check_load_path(fp):
             data = np.load(fp)
             return fp_is_dir, data
 
+def split_data_for_scatter(data: list, n_ranks: int) -> list:
+    """Split a list into a list of lists for MPI scattering"""
+    data_length = len(data)
+    quot, rem = divmod(data_length, n_ranks)
+
+    # determine the size of each sub-task
+    counts = [quot + 1 if n < rem else quot for n in range(n_ranks)]
+
+    # determine the starting and ending indices of each sub-task
+    starts = [sum(counts[:n]) for n in range(n_ranks)]
+    ends = [sum(counts[:n + 1]) for n in range(n_ranks)]
+
+    # converts data into a list of arrays
+    scatter_data = [data[starts[n]:ends[n]] for n in range(n_ranks)]
+    return scatter_data
 
 if rank == 0:
     if "config" in args.__dict__:
@@ -444,70 +459,72 @@ if rank == 0:
         if args.noise_cov:
             bl_data_weights["N"] = noise_cov
         all_data_weights.append(bl_data_weights)
+    all_data_weights = split_data_for_scatter(all_data_weights, size)
 else:
     all_data_weights = None
 
 # Send per-baseline visibilities to each process
-data = comm.scatter(all_data_weights)
-antpair = data["antpair"]
-d = data["d"]
-w = ~data["w"]
-fgmodes = data["fgmodes"]
-S_initial = data["S_initial"]
-Ninv = data["Ninv"]
+list_of_baselines = comm.scatter(all_data_weights)
+for data in list_of_baselines:
+    antpair = data["antpair"]
+    d = data["d"]
+    w = ~data["w"]
+    fgmodes = data["fgmodes"]
+    S_initial = data["S_initial"]
+    Ninv = data["Ninv"]
 
-# Create a subdirectory in out_dir for each baseline
-out_dir = data["out_dir"]
-bl_str = f"{antpair[0]}-{antpair[1]}"
-out_dir /= bl_str
-out_dir.mkdir(exist_ok=True, parents=True)
+    # Create a subdirectory in out_dir for each baseline
+    out_dir = data["out_dir"]
+    bl_str = f"{antpair[0]}-{antpair[1]}"
+    out_dir /= bl_str
+    out_dir.mkdir(exist_ok=True, parents=True)
 
-# Power spectrum prior
-# This has shape (2, Ndelays). The first dimension is for the upper and
-# lower prior bounds respectively. If the prior for a given delay is
-# set to zero, no prior is applied. Otherwise, the solution is restricted
-# to be within the range ps_prior[1] < soln < ps_prior[0].
-Nfreqs = d.shape[1]
-ps_prior = np.zeros((2, Nfreqs))
-if args.ps_prior_lo != 0 or args.ps_prior_hi != 0:
-    ps_prior_inds = slice(
-        Nfreqs//2 - args.n_ps_prior_bins,
-        Nfreqs//2 + args.n_ps_prior_bins + 1
-    )
-    ps_prior[0, ps_prior_inds] = args.ps_prior_hi
-    ps_prior[1, ps_prior_inds] = args.ps_prior_lo
+    # Power spectrum prior
+    # This has shape (2, Ndelays). The first dimension is for the upper and
+    # lower prior bounds respectively. If the prior for a given delay is
+    # set to zero, no prior is applied. Otherwise, the solution is restricted
+    # to be within the range ps_prior[1] < soln < ps_prior[0].
+    Nfreqs = d.shape[1]
+    ps_prior = np.zeros((2, Nfreqs))
+    if args.ps_prior_lo != 0 or args.ps_prior_hi != 0:
+        ps_prior_inds = slice(
+            Nfreqs//2 - args.n_ps_prior_bins,
+            Nfreqs//2 + args.n_ps_prior_bins + 1
+        )
+        ps_prior[0, ps_prior_inds] = args.ps_prior_hi
+        ps_prior[1, ps_prior_inds] = args.ps_prior_lo
 
-if rank == 0:
-    verbose = args.verbose
-else:
-    verbose = False
-if verbose:
-    print("Printing status messages for:")
-    print(f"Rank:     {rank}")
-    print(f"Baseline: {antpair}", end="\n\n")
+    if rank == 0:
+        verbose = args.verbose
+    else:
+        verbose = False
+    if verbose:
+        print("Printing status messages for:")
+        print(f"Rank:     {rank}")
+        print(f"Baseline: {antpair}", end="\n\n")
 
-# Run Gibbs sampler
-# signal_cr = (Niter, Ntimes, Nfreqs) [complex]
-# signal_S = (Nfreqs, Nfreqs) [complex]
-# signal_ps = (Niter, Nfreqs) [float]
-# fg_amps = (Niter, Ntimes, Nfgmodes) [complex]
-start = time.time()
-signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post = \
-    hp.pspec.gibbs_sample_with_fg(
-        d,
-        w[0],  # FIXME: add functionality for time-dependent flags
-        S_initial,
-        fgmodes,
-        Ninv,
-        ps_prior,
-        Niter=args.Niter,
-        seed=args.seed,
-        map_estimate=args.map_estimate,
-        verbose=verbose,
-        nproc=args.Nproc,
-        write_Niter=args.write_Niter,
-        out_dir=out_dir
-    )
-print(f"Sampling complete!", end="\n\n")
-elapsed = time.time() - start
-print(f"Time elapsed: {elapsed} s")
+    # Run Gibbs sampler
+    # signal_cr = (Niter, Ntimes, Nfreqs) [complex]
+    # signal_S = (Nfreqs, Nfreqs) [complex]
+    # signal_ps = (Niter, Nfreqs) [float]
+    # fg_amps = (Niter, Ntimes, Nfgmodes) [complex]
+    start = time.time()
+    signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post = \
+        hp.pspec.gibbs_sample_with_fg(
+            d,
+            w[0],  # FIXME: add functionality for time-dependent flags
+            S_initial,
+            fgmodes,
+            Ninv,
+            ps_prior,
+            Niter=args.Niter,
+            seed=args.seed,
+            map_estimate=args.map_estimate,
+            verbose=verbose,
+            nproc=args.Nproc,
+            write_Niter=args.write_Niter,
+            out_dir=out_dir
+        )
+    print(f"Sampling complete!", end="\n\n")
+    elapsed = time.time() - start
+    print(f"Time elapsed: {elapsed} s")
