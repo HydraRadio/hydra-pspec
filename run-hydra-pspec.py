@@ -269,6 +269,11 @@ def split_data_for_scatter(data: list, n_ranks: int) -> list:
     data_length = len(data)
     quot, rem = divmod(data_length, n_ranks)
 
+    if quot == 0:
+        print("Error: Number of baselines should be >= number of MPI ranks!")
+        sys.stdout.flush()
+        comm.Abort()
+
     # determine the size of each sub-task
     counts = [quot + 1 if n < rem else quot for n in range(n_ranks)]
 
@@ -279,6 +284,7 @@ def split_data_for_scatter(data: list, n_ranks: int) -> list:
     # converts data into a list of arrays
     scatter_data = [data[starts[n]:ends[n]] for n in range(n_ranks)]
     return scatter_data
+
 
 if rank == 0:
     if "config" in args.__dict__:
