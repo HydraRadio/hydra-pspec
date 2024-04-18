@@ -1,6 +1,5 @@
 
 import numpy as np
-import scipy
 import scipy.special
 from pathlib import Path
 from pprint import pprint
@@ -12,7 +11,6 @@ import json
 from jsonargparse import ArgumentParser, ActionConfigFile
 from jsonargparse.typing import Path_fr, Path_dw
 from pyuvdata import UVData
-from astropy import units
 from astropy.units import Quantity
 
 import hydra_pspec as hp

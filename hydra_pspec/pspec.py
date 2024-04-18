@@ -1,13 +1,10 @@
 import numpy as np
 import scipy as sp
-from scipy.stats import mode
-from scipy.signal.windows import blackmanharris as BH
 from scipy.stats import invgamma
-from scipy.optimize import minimize, Bounds
 
 from multiprocess import Pool, current_process
 from . import utils
-import os, time
+import time
 
 
 def sample_S(s=None, sk=None, prior=None):
