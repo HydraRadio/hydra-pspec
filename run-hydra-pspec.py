@@ -270,7 +270,7 @@ def split_data_for_scatter(data: list, n_ranks: int) -> list:
     quot, rem = divmod(data_length, n_ranks)
 
     if quot == 0:
-        print("Error: Number of baselines should be >= number of MPI ranks!")
+        print(f"Error: Number of baselines ({data_length}) should be >= number of MPI ranks ({size})!")
         sys.stdout.flush()
         comm.Abort()
 
