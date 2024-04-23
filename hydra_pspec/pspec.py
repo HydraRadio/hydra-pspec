@@ -142,7 +142,7 @@ def gcr_fgmodes_1d(
     # WARNING: if more than 1000 processes is every used this sum will not
     # guarantee a unique seed for each process!
     pid = current_process().pid
-    seed = multiprocess_seed + pid*1000 + idx
+    seed = multiprocess_seed + idx
     np.random.seed(seed)
 
     Nfreqs, Nmodes = fgmodes.shape
