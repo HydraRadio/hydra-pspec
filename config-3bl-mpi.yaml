@@ -1,14 +1,14 @@
 # Analysis params
 ant_str: "0_1,0_3,0_5"
 seed: 7123689
-Niter: 1000
+Niter: 3
 Nproc: 1
 verbose: True
 ps_prior_lo: 0.1
 ps_prior_hi: 2
 n_ps_prior_bins: 3
 # Write params
-dirname: "results-seed-7123689-Niter-1000"
+dirname: "results-fixed-seed-7123689-Niter-3-mpi-n3-repeat"
 clobber: False
 # Signal model
 sigcov0: "./test-data/eor-cov/"
