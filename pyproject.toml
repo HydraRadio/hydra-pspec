@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hydra-pspec"
 version = "0.0.0"
-dependencies = ["numpy", "scipy", "multiprocess", "pyuvdata", "astropy", "jsonargparse", "matplotlib"]
+dependencies = ["numpy", "scipy", "multiprocess", "pyuvdata", "astropy", "jsonargparse", "matplotlib", "mpi4py"]
 
 [tool.setuptools]
 py-modules = ['dpss', 'utils', 'oqe', 'pspec', 'lssa']
