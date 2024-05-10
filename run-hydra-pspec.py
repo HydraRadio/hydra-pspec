@@ -287,6 +287,7 @@ def split_data_for_scatter(data: list, n_ranks: int) -> list:
 
 
 if rank == 0:
+    time_load_start = time.perf_counter()
     if "config" in args.__dict__:
         print(f"Loading config file {str(args.config[0])}", end="\n\n")
     pprint(args.__dict__)
@@ -343,6 +344,7 @@ if rank == 0:
         add_mtime_to_filepath(out_dir)
     out_dir.mkdir(exist_ok=True, parents=True)
     print(f"\nWriting output(s) to {out_dir.absolute()}", end="\n\n")
+    results_dir = out_dir
     # Catalog git version
     try:
         git_info = get_git_version_info()
@@ -466,11 +468,19 @@ if rank == 0:
             bl_data_weights["N"] = noise_cov
         all_data_weights.append(bl_data_weights)
     all_data_weights = split_data_for_scatter(all_data_weights, size)
+    time_load_end = time.perf_counter()
+    time_load = time_load_end - time_load_start
+    print(f"{time_load=} s")
 else:
     all_data_weights = None
 
 # Send per-baseline visibilities to each process
 list_of_baselines = comm.scatter(all_data_weights)
+if rank == 0:
+    time_scatter_end = time.perf_counter()
+    time_scatter = time_scatter_end - time_load_end
+    print(f"{time_scatter=} s")
+
 for data in list_of_baselines:
     antpair = data["antpair"]
     d = data["d"]
@@ -510,11 +520,6 @@ for data in list_of_baselines:
         print(f"Baseline: {antpair}", end="\n\n")
 
     # Run Gibbs sampler
-    # signal_cr = (Niter, Ntimes, Nfreqs) [complex]
-    # signal_S = (Nfreqs, Nfreqs) [complex]
-    # signal_ps = (Niter, Nfreqs) [float]
-    # fg_amps = (Niter, Ntimes, Nfgmodes) [complex]
-    start = time.time()
     signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post = \
         hp.pspec.gibbs_sample_with_fg(
             d,
@@ -531,6 +536,19 @@ for data in list_of_baselines:
             write_Niter=args.write_Niter,
             out_dir=out_dir
         )
-    print(f"Sampling complete!", end="\n\n")
-    elapsed = time.time() - start
-    print(f"Time elapsed: {elapsed} s")
+
+if rank == 0:
+    time_gibbs_stop = time.perf_counter()
+    time_gibbs = time_gibbs_stop - time_scatter_end
+    print(f"{time_gibbs=}s")
+
+    time_overall = time_gibbs_stop - time_load_start
+    print(f"{time_overall=}s")
+
+    timings = {}
+    timings["num_ranks"] = size
+    timings["num_baselines"] = len(uvd.get_antpairs())
+    timings["rank_0_timers"] = {"load_data": time_load, "scatter": time_scatter, "process": time_gibbs, "total": time_overall}
+
+    with open(Path(results_dir, "timings.json"), "w") as f:
+        json.dump(timings, f)
