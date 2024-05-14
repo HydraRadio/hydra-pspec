@@ -1,4 +1,7 @@
-"""Copy data for a single baseline, renaming the antenna pair string for however many copies are required"""
+"""Copy data for a single baseline, renaming the antenna pair string for however many copies are required.
+Example usage:
+python copy_baselines.py --data_dir=test-data --dest_dir=temp --baseline_pair="0-1" --num_baselines=2"""
+
 import argparse
 from pathlib import Path
 import shutil
