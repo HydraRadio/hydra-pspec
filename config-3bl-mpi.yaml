@@ -1,5 +1,5 @@
 # Analysis params
-ant_str: "0_1,0_3,0_5"
+ant_str: "0-1,0-3,0-5"
 seed: 7123689
 Niter: 1000
 Nproc: 1
