@@ -10,7 +10,7 @@ import sys
 import json
 
 from jsonargparse import ArgumentParser, ActionConfigFile
-from jsonargparse.typing import Path_fr, Path_dw
+from jsonargparse.typing import Path_fr, Path_dw, List
 from pyuvdata import UVData
 from astropy import units
 from astropy.units import Quantity
@@ -144,17 +144,23 @@ parser.add_argument(
 )
 parser.add_argument(
     "--ps_prior_lo",
-    type=float,
-    default=0.0,
-    help="Sets the lower bound of the prior on the delay power spectrum. "
-         "Defaults to 0 which corresponds to no lower bound."
+    type=List[float],
+    default=[0.0],
+    help="Sets the lower bound of the prior on the delay power spectrum.  "
+         "Passed as a list of floats.  Can be either a list with a single "
+         "float or a list of `2 * n_ps_prior_bins + 1` floats, one for each "
+         "delay bin with a prior applied.  Defaults to [0.0] which corresponds "
+         "to no lower bound."
 )
 parser.add_argument(
     "--ps_prior_hi",
-    type=float,
-    default=0.0,
-    help="Sets the upper bound of the prior on the delay power spectrum. "
-         "Defaults to 0 which corresponds to no upper bound."
+    type=List[float],
+    default=[0.0],
+    help="Sets the upper bound of the prior on the delay power spectrum.  "
+         "Passed as a list of floats.  Can be either a list with a single "
+         "float or a list of `2 * n_ps_prior_bins + 1` floats, one for each "
+         "delay bin with a prior applied.  Defaults to [0.0] which corresponds "
+         "to no upper bound."
 )
 parser.add_argument(
     "--map_estimate",
@@ -387,7 +393,7 @@ else:
 # set to zero, no prior is applied. Otherwise, the solution is restricted
 # to be within the range ps_prior[1] < soln < ps_prior[0].
 ps_prior = np.zeros((2, Nfreqs))
-if args.ps_prior_lo != 0 or args.ps_prior_hi != 0:
+if np.any(args.ps_prior_lo != 0) or np.any(args.ps_prior_hi != 0):
     ps_prior_inds = slice(
         Nfreqs//2 - args.n_ps_prior_bins,
         Nfreqs//2 + args.n_ps_prior_bins + 1
