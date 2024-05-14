@@ -19,7 +19,7 @@ dest_dir.mkdir()
 
 for n in range(args.num_baselines):
     for data_type in ["eor-cov", "fgmodes", "noise"]:
-        dest = Path(dest_dir, data_type, str(n))
+        dest = Path(dest_dir, data_type, "0-" + str(n + 1))
         dest.mkdir(parents=True)
 
         for src in Path(data_dir, data_type, args.baseline_pair).glob("*.npy"):
