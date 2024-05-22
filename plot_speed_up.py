@@ -3,8 +3,9 @@ from pathlib import Path
 import json
 
 parser = argparse.ArgumentParser("Combine timing files and plot speed up.")
-parser.add_argument("--results_dir", type=str, help="Directory containing output from multiple runs (in subdirectories)")
-parser.add_argument("--summary_file", type=int, help="File containing timings for all runs")
+group = parser.add_mutually_exclusive_group(required=True)
+group.add_argument("--results_dir", type=str, help="Directory containing output from multiple runs (in subdirectories)")
+group.add_argument("--summary_file", type=str, help="File containing timings for all runs")
 
 args = parser.parse_args()
 
