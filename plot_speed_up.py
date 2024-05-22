@@ -1,0 +1,66 @@
+"""
+Plot speed up for fixed problem size, varying number of baselines/rank.
+Usage:
+python plot_speed_up.py --results_dir=dir_containing_multiple_runs_as_subdirs
+python plots_speed_up.py --summary_file=file_containing_timings_from_all_runs.json
+"""
+
+import argparse
+from pathlib import Path
+import json
+import matplotlib.pyplot as plt
+
+parser = argparse.ArgumentParser("Combine timing files and plot speed up.")
+group = parser.add_mutually_exclusive_group(required=True)
+group.add_argument("--results_dir", type=str, help="Directory containing output from multiple runs (in subdirectories)")
+group.add_argument("--summary_file", type=str, help="File containing timings for all runs")
+
+args = parser.parse_args()
+
+if args.results_dir:
+    # Combine files from multiple runs
+    timings = []
+    results_dir = Path(args.results_dir).resolve()
+    for subdir in results_dir.iterdir():
+        file = subdir.joinpath("timings.json")
+        with open(file) as f:
+            data = json.load(f)
+        timings.append(data)
+
+    with open(results_dir.joinpath("combined_timings.json"), "w") as f:
+        # Save summary file
+        json.dump(timings, f)
+
+if args.summary_file:
+    with open(Path(args.summary_file).resolve()) as f:
+        data = json.load(f)
+
+
+def process_data(data: list[dict], timer: str):
+    "Extract execution time and baselines/rank"
+    bl_per_rank = []
+    ex_time = []
+    for d in data:
+        bl_per_rank.append(d["num_baselines"]/d["num_ranks"])
+        ex_time.append((d["rank_0_timers"][timer]))
+
+    sorted_indices = sorted(range(len(bl_per_rank)), key=lambda i: bl_per_rank[i])
+    ex_time = [ex_time[i] for i in sorted_indices]
+    # ex_time = [t for _, t in sorted(zip(bl_per_rank, ex_time), key=lambda pair: pair[0])]
+    bl_per_rank.sort()
+    speed_up = [ex_time[0]/t for t in ex_time]
+    return speed_up, bl_per_rank
+
+
+def plot_speed_up(speed_up: list, x: list):
+    """Plot speed up vs varible x (e.g. baselines/rank)"""
+    fig, ax = plt.subplots()
+    ax.plot(x, speed_up, "o--")
+    ax.axline((0, 0), slope=1, linestyle=":", color="k")
+    ax.set_ylabel("Speed up")
+    ax.set_xlabel("Baselines/rank")
+    plt.show()
+
+
+speed_up, bl_per_rank = process_data(data, "total")
+plot_speed_up(speed_up, bl_per_rank)
