@@ -1,3 +1,10 @@
+"""
+Plot speed up for fixed problem size, varying number of baselines/rank.
+Usage:
+python plot_speed_up.py --results_dir=dir_containing_multiple_runs_as_subdirs
+python plots_speed_up.py --summary_file=file_containing_timings_from_all_runs.json
+"""
+
 import argparse
 from pathlib import Path
 import json
@@ -21,6 +28,7 @@ if args.results_dir:
         timings.append(data)
 
     with open(results_dir.joinpath("combined_timings.json"), "w") as f:
+        # Save summary file
         json.dump(timings, f)
 
 if args.summary_file:
