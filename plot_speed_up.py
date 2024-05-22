@@ -22,3 +22,6 @@ if args.results_dir:
     with open(results_dir.joinpath("combined_timings.json"), "w") as f:
         json.dump(timings, f)
 
+if args.summary_file:
+    with open(Path(args.summary_file).resolve()) as f:
+        data = json.load(f)
