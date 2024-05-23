@@ -30,7 +30,7 @@ if args.results_dir:
 
     with open(results_dir.joinpath("combined_timings.json"), "w") as f:
         # Save summary file
-        json.dump(timings, f)
+        json.dump(timings, f, indent=2)
 
 if args.summary_file:
     with open(Path(args.summary_file).resolve()) as f:
