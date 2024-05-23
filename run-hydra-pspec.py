@@ -551,4 +551,4 @@ if rank == 0:
     timings["rank_0_timers"] = {"load_data": time_load, "scatter": time_scatter, "process": time_gibbs, "total": time_overall}
 
     with open(Path(results_dir, "timings.json"), "w") as f:
-        json.dump(timings, f)
+        json.dump(timings, f, indent=2)
