@@ -470,7 +470,6 @@ if rank == 0:
     all_data_weights = split_data_for_scatter(all_data_weights, size)
     time_load_end = time.perf_counter()
     time_load = time_load_end - time_load_start
-    print(f"{time_load=} s")
 else:
     all_data_weights = None
 
@@ -479,7 +478,6 @@ list_of_baselines = comm.scatter(all_data_weights)
 if rank == 0:
     time_scatter_end = time.perf_counter()
     time_scatter = time_scatter_end - time_load_end
-    print(f"{time_scatter=} s")
 
 for data in list_of_baselines:
     antpair = data["antpair"]
@@ -540,10 +538,8 @@ for data in list_of_baselines:
 if rank == 0:
     time_gibbs_stop = time.perf_counter()
     time_gibbs = time_gibbs_stop - time_scatter_end
-    print(f"{time_gibbs=}s")
 
     time_overall = time_gibbs_stop - time_load_start
-    print(f"{time_overall=}s")
 
     timings = {}
     timings["num_ranks"] = size
