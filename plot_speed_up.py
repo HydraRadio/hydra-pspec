@@ -21,19 +21,20 @@ if args.results_dir:
     # Combine files from multiple runs
     timings = []
     results_dir = Path(args.results_dir).resolve()
-    for subdir in results_dir.iterdir():
-        file = subdir.joinpath("timings.json")
-        with open(file) as f:
-            data = json.load(f)
-        timings.append(data)
+    for dir_item in results_dir.iterdir():
+        if dir_item.is_dir():
+            file = dir_item.joinpath("timings.json")
+            with open(file) as f:
+                data = json.load(f)
+            timings.append(data)
 
     with open(results_dir.joinpath("combined_timings.json"), "w") as f:
         # Save summary file
-        json.dump(timings, f)
+        json.dump(timings, f, indent=2)
 
 if args.summary_file:
     with open(Path(args.summary_file).resolve()) as f:
-        data = json.load(f)
+        timings = json.load(f)
 
 
 def process_data(data: list[dict], timer: str):
@@ -62,5 +63,5 @@ def plot_speed_up(speed_up: list, x: list):
     plt.show()
 
 
-speed_up, bl_per_rank = process_data(data, "total")
+speed_up, bl_per_rank = process_data(timings, "total")
 plot_speed_up(speed_up, bl_per_rank)
