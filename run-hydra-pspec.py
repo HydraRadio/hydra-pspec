@@ -535,6 +535,11 @@ for data in list_of_baselines:
             out_dir=out_dir
         )
 
+pre_barrier = time.perf_counter()
+comm.barrier()
+post_barrier = time.perf_counter()
+time_barrier = post_barrier - pre_barrier
+
 if rank == 0:
     time_gibbs_stop = time.perf_counter()
     time_gibbs = time_gibbs_stop - time_scatter_end
@@ -544,7 +549,11 @@ if rank == 0:
     timings = {}
     timings["num_ranks"] = size
     timings["num_baselines"] = len(uvd.get_antpairs())
-    timings["rank_0_timers"] = {"load_data": time_load, "scatter": time_scatter, "process": time_gibbs, "total": time_overall}
+    timings["rank_0_timers"] = {"load_data": time_load,
+                                "scatter": time_scatter,
+                                "process": time_gibbs,
+                                "barrier": time_barrier,
+                                "total": time_overall}
 
     with open(Path(results_dir, "timings.json"), "w") as f:
         json.dump(timings, f, indent=2)
