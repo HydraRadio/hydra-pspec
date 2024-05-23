@@ -34,7 +34,7 @@ if args.results_dir:
 
 if args.summary_file:
     with open(Path(args.summary_file).resolve()) as f:
-        data = json.load(f)
+        timings = json.load(f)
 
 
 def process_data(data: list[dict], timer: str):
@@ -63,5 +63,5 @@ def plot_speed_up(speed_up: list, x: list):
     plt.show()
 
 
-speed_up, bl_per_rank = process_data(data, "total")
+speed_up, bl_per_rank = process_data(timings, "total")
 plot_speed_up(speed_up, bl_per_rank)
