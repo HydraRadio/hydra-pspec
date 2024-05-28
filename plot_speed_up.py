@@ -45,21 +45,22 @@ def process_data(data: list[dict], timer: str):
         bl_per_rank.append(d["num_baselines"]/d["num_ranks"])
         ex_time.append((d["rank_0_timers"][timer]))
 
-    sorted_indices = sorted(range(len(bl_per_rank)), key=lambda i: bl_per_rank[i])
+    sorted_indices = sorted(range(len(bl_per_rank)), key=lambda i: bl_per_rank[i], reverse=True)
     ex_time = [ex_time[i] for i in sorted_indices]
-    # ex_time = [t for _, t in sorted(zip(bl_per_rank, ex_time), key=lambda pair: pair[0])]
-    bl_per_rank.sort()
-    speed_up = [ex_time[0]/t for t in ex_time]
+    bl_per_rank.sort(reverse=True)
+    speed_up = [t/ex_time[0] for t in ex_time]
     return speed_up, bl_per_rank
 
 
 def plot_speed_up(speed_up: list, x: list):
-    """Plot speed up vs varible x (e.g. baselines/rank)"""
+    """Plot speed up vs variable x (e.g. baselines/rank)"""
     fig, ax = plt.subplots()
-    ax.plot(x, speed_up, "o--")
-    ax.axline((0, 0), slope=1, linestyle=":", color="k")
+    ax.plot(x, speed_up, "o--", label="Results")
+    ax.axline((x[0], speed_up[0]), slope=-1, linestyle=":", color="k", label="1:1")
     ax.set_ylabel("Speed up")
     ax.set_xlabel("Baselines/rank")
+    ax.xaxis.set_inverted(True)
+    plt.legend()
     plt.show()
 
 
