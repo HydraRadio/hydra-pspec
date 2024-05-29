@@ -2,7 +2,7 @@
 Plot speed up for fixed problem size, varying number of baselines/rank.
 Usage:
 python plot_speed_up.py --results_dir=dir_containing_multiple_runs_as_subdirs
-python plots_speed_up.py --summary_file=file_containing_timings_from_all_runs.json
+python plot_speed_up.py --summary_file=file_containing_timings_from_all_runs.json
 """
 
 import argparse
@@ -35,6 +35,7 @@ if args.results_dir:
 if args.summary_file:
     with open(Path(args.summary_file).resolve()) as f:
         timings = json.load(f)
+    results_dir = Path(args.summary_file).parent.resolve()
 
 
 def process_data(data: list[dict], timer: str):
@@ -61,7 +62,7 @@ def plot_speed_up(speed_up: list, x: list):
     ax.set_xlabel("Baselines/rank")
     ax.xaxis.set_inverted(True)
     plt.legend()
-    plt.show()
+    plt.savefig(results_dir.joinpath("speed_up.pdf"))
 
 
 speed_up, bl_per_rank = process_data(timings, "total")
