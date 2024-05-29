@@ -4,4 +4,8 @@
 
 n_ranks=$1
 job_name="strongscaling_${n_ranks}ranks"
-sed "s/n_ranks_placeholder/${n_ranks}/g; s/job_name_placeholder/${job_name}/g" jobscript.sh.template > jobscript_${job_name}.sh
+n_baselines=3
+results_dir=strong_scaling_results
+sed "s/n_ranks/${n_ranks}/g; s/job_name/${job_name}/g; s/out_dir/${results_dir}/g" \
+    jobscript.sh.template > jobscript_${job_name}.sh
+mkdir -p ${results_dir}/slurm-logs
