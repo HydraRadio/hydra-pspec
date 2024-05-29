@@ -1,0 +1,26 @@
+#!/bin/bash
+
+#SBATCH --ntasks n_ranks_placeholder
+#SBATCH --time 30:00
+#SBATCH --mem 64G
+#SBATCH --job-name job_name_placeholder
+#SBATCH --partition cosma8-serial
+#SBATCH --account dp270
+#SBATCH --output=R-%x.%j.out
+#SBATCH --error=R-%x.%j.err
+
+module purge
+module load intel_comp/2020-update2
+module load intel_mpi/2020-update2
+
+source ~/.bashrc
+source .venv/bin/activate
+which python
+
+script="/cosma/home/dp270/dc-cape1/hydra-pspec/run-hydra-pspec.py"
+results_dir="strong_scaling/3bl_${SLURM_NTASKS}ranks"
+args="--config config-3bl-mpi.yaml --dirname=${results_dir}"
+
+mpirun -n $SLURM_NTASKS python -u $script $args
+cp $0 ${results_dir}
+
