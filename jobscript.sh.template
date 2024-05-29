@@ -6,8 +6,8 @@
 #SBATCH --job-name job_name
 #SBATCH --partition cosma8-serial
 #SBATCH --account dp270
-#SBATCH --output=out_dir/slurm-logs/%x.%j.out
-#SBATCH --error=out_dir/slurm-logs/%x.%j.err
+#SBATCH --output=slurm-logs/%x.%j.out
+#SBATCH --error=slurm-logs/%x.%j.err
 
 module purge
 module load intel_comp/2020-update2
