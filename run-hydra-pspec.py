@@ -351,9 +351,9 @@ if rank == 0:
     except:
         git_info = ''
     with open(out_dir / "git.json", "w") as f:
-        json.dump(git_info, f)
+        json.dump(git_info, f, indent=2)
     # Catalog command line arguments
-    parser.save(args, out_dir / "args.json", format="json", skip_none=False)
+    parser.save(args, out_dir / "args.json", format="json_indented", skip_none=False)
     if "SLURM_JOB_ID" in os.environ:
         # If running in SLURM, create empty file named with the SLURM Job ID
         (out_dir / os.environ["SLURM_JOB_ID"]).touch()
