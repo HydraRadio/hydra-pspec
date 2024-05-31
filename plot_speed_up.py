@@ -65,5 +65,31 @@ def plot_speed_up(speed_up: list, x: list):
     plt.savefig(results_dir.joinpath("speed_up.pdf"))
 
 
+def get_time_and_ranks(data: list[dict], timer: str):
+    "Extract execution time and number of rank"
+    n_ranks = []
+    ex_time = []
+    for d in data:
+        n_ranks.append(d["num_ranks"])
+        ex_time.append((d["rank_0_timers"][timer]))
+
+    sorted_indices = sorted(range(len(n_ranks)), key=lambda i: n_ranks[i])
+    ex_time = [ex_time[i] for i in sorted_indices]
+    n_ranks.sort()
+
+    return ex_time, n_ranks
+
+
+def plot_time_vs_ranks(ex_time: list, x: list):
+    """Plot speed up vs variable x (e.g. number of ranks)"""
+    fig, ax = plt.subplots()
+    ax.plot(x, ex_time, "o--", label="Total run time")
+    ax.set_ylabel("Time (s)")
+    ax.set_xlabel("Number of ranks")
+    plt.legend()
+    plt.savefig(results_dir.joinpath("time_vs_ranks.pdf"))
+
 speed_up, bl_per_rank = get_speed_up_data(timings, "total")
 plot_speed_up(speed_up, bl_per_rank)
+ex_time, n_ranks = get_time_and_ranks(timings, "total")
+plot_time_vs_ranks(ex_time, n_ranks)
