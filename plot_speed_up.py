@@ -38,7 +38,7 @@ if args.summary_file:
     results_dir = Path(args.summary_file).parent.resolve()
 
 
-def process_data(data: list[dict], timer: str):
+def get_speed_up_data(data: list[dict], timer: str):
     "Extract execution time and baselines/rank"
     bl_per_rank = []
     ex_time = []
@@ -49,7 +49,7 @@ def process_data(data: list[dict], timer: str):
     sorted_indices = sorted(range(len(bl_per_rank)), key=lambda i: bl_per_rank[i], reverse=True)
     ex_time = [ex_time[i] for i in sorted_indices]
     bl_per_rank.sort(reverse=True)
-    speed_up = [t/ex_time[0] for t in ex_time]
+    speed_up = [ex_time[0]/t for t in ex_time]
     return speed_up, bl_per_rank
 
 
@@ -65,5 +65,5 @@ def plot_speed_up(speed_up: list, x: list):
     plt.savefig(results_dir.joinpath("speed_up.pdf"))
 
 
-speed_up, bl_per_rank = process_data(timings, "total")
+speed_up, bl_per_rank = get_speed_up_data(timings, "total")
 plot_speed_up(speed_up, bl_per_rank)
