@@ -3,6 +3,7 @@ import numpy as np
 import scipy.special
 from pathlib import Path
 from pprint import pprint
+from resource import getrusage, RUSAGE_SELF
 import os
 import time
 import sys
@@ -557,3 +558,11 @@ if rank == 0:
 
     with open(Path(results_dir, "timings.json"), "w") as f:
         json.dump(timings, f, indent=2)
+
+    resources = getrusage(RUSAGE_SELF)
+    stats = {"ru_maxrss": resources.ru_maxrss,
+             "ru_utime": resources.ru_utime,
+             "ru_stime": resources.ru_stime
+             }
+    with open(Path(results_dir, "resources.json"), "w") as f:
+        json.dump(stats, f, indent=2)
