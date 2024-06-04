@@ -62,7 +62,7 @@ def plot_speed_up(speed_up: list, x: list):
     ax.set_xlabel("Baselines/rank")
     ax.xaxis.set_inverted(True)
     plt.legend()
-    plt.savefig(results_dir.joinpath("speed_up.pdf"))
+    plt.savefig(results_dir.joinpath("speed_up.svg"))
 
 
 def get_time_and_ranks(data: list[dict], timer: str):
@@ -87,7 +87,7 @@ def plot_time_vs_ranks(ex_time: list, x: list):
     ax.set_ylabel("Time (s)")
     ax.set_xlabel("Number of ranks")
     plt.legend()
-    plt.savefig(results_dir.joinpath("time_vs_ranks.pdf"))
+    plt.savefig(results_dir.joinpath("time_vs_ranks.svg"))
 
 speed_up, bl_per_rank = get_speed_up_data(timings, "total")
 plot_speed_up(speed_up, bl_per_rank)
