@@ -1,0 +1,28 @@
+# Analysis params
+ant_str: "0_1,0_2,0_3,0_4,0_5,0_6,0_7,0_8,\
+  0_9,0_10,0_11,0_12" #,0_13,0_14,0_15,0_16"
+seed: 7123689
+Niter: 3
+Nproc: 1
+verbose: True
+ps_prior_lo: 0.1
+ps_prior_hi: 2
+n_ps_prior_bins: 3
+# Write params
+dirname: "results_scaling/12bl_1r"
+clobber: False
+# Signal model
+sigcov0: "scaling-data/eor-cov/"
+sigcov0_file: "eor-cov.npy"
+# FG model
+Nfgmodes: 12
+fgmodes: "scaling-data/fgmodes/"
+fgmodes_file: "fgmodes.npy"
+# Noise
+noise: "scaling-data/noise/"
+noise_file: "noise.npy"
+noise_cov: "scaling-data/noise/"
+noise_cov_file: "noise-cov.npy"
+# Input files
+file_paths:
+- "scaling-data/vis-eor-fgs.uvh5"
