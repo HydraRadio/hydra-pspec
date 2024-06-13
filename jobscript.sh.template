@@ -19,8 +19,8 @@ source .venv/bin/activate
 which python
 
 script="/cosma/home/dp270/dc-cape1/hydra-pspec/run-hydra-pspec.py"
-results_dir="out_dir/3bl_n_ranksranks"
-args="--config config-3bl-mpi.yaml --dirname=${results_dir}"
+results_dir="out_dir/n_ranksranks"
+args="--config config-scaling-test.yaml --dirname=${results_dir}"
 
 mpirun -n $SLURM_NTASKS python -u $script $args
 cp $0 ${results_dir}
