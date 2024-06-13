@@ -14,6 +14,8 @@ parser = argparse.ArgumentParser("Combine timing files and plot speed up.")
 group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument("--results_dir", type=str, help="Directory containing output from multiple runs (in subdirectories)")
 group.add_argument("--summary_file", type=str, help="File containing timings for all runs")
+parser.add_argument("--timer", type=str, help="Which timer to use")
+
 
 args = parser.parse_args()
 
@@ -38,35 +40,20 @@ if args.summary_file:
     results_dir = Path(args.summary_file).parent.resolve()
 
 
-def get_speed_up_data(data: list[dict], timer: str):
-    "Extract execution time and baselines/rank"
-    bl_per_rank = []
-    ex_time = []
-    for d in data:
-        bl_per_rank.append(d["num_baselines"]/d["num_ranks"])
-        ex_time.append((d["rank_0_timers"][timer]))
-
-    sorted_indices = sorted(range(len(bl_per_rank)), key=lambda i: bl_per_rank[i], reverse=True)
-    ex_time = [ex_time[i] for i in sorted_indices]
-    bl_per_rank.sort(reverse=True)
-    speed_up = [ex_time[0]/t for t in ex_time]
-    return speed_up, bl_per_rank
-
-
-def plot_speed_up(speed_up: list, x: list):
-    """Plot speed up vs variable x (e.g. baselines/rank)"""
+def plot_speed_up_ranks(speed_up: list, n_ranks: list):
+    """Plot speed up vs number of ranks"""
     fig, ax = plt.subplots()
-    ax.plot(x, speed_up, "o--", label="Results")
-    ax.axline((x[0], speed_up[0]), slope=-1, linestyle=":", color="k", label="1:1")
+    ax.plot(n_ranks, speed_up, "o--", label=timer)
+    slope = 1/n_ranks[0]
+    ax.axline((n_ranks[0], speed_up[0]), slope=slope, linestyle=":", color="k", label="Ideal")
     ax.set_ylabel("Speed up")
-    ax.set_xlabel("Baselines/rank")
-    ax.xaxis.set_inverted(True)
+    ax.set_xlabel("Number of ranks")
     plt.legend()
     plt.savefig(results_dir.joinpath("speed_up.svg"))
 
 
-def get_time_and_ranks(data: list[dict], timer: str):
-    "Extract execution time and number of rank"
+def process_timings(data: list[dict], timer: str):
+    "Extract execution time and number of ranks"
     n_ranks = []
     ex_time = []
     for d in data:
@@ -76,20 +63,25 @@ def get_time_and_ranks(data: list[dict], timer: str):
     sorted_indices = sorted(range(len(n_ranks)), key=lambda i: n_ranks[i])
     ex_time = [ex_time[i] for i in sorted_indices]
     n_ranks.sort()
+    speed_up = [ex_time[0]/t for t in ex_time]
 
-    return ex_time, n_ranks
+    return ex_time, n_ranks, speed_up
 
 
 def plot_time_vs_ranks(ex_time: list, x: list):
     """Plot speed up vs variable x (e.g. number of ranks)"""
     fig, ax = plt.subplots()
-    ax.plot(x, ex_time, "o--", label="Total run time")
+    ax.plot(x, ex_time, "o--", label=timer)
     ax.set_ylabel("Time (s)")
     ax.set_xlabel("Number of ranks")
     plt.legend()
     plt.savefig(results_dir.joinpath("time_vs_ranks.svg"))
 
-speed_up, bl_per_rank = get_speed_up_data(timings, "total")
-plot_speed_up(speed_up, bl_per_rank)
-ex_time, n_ranks = get_time_and_ranks(timings, "total")
+if args.timer:
+    timer = args.timer
+else:
+    timer = "total"
+
+ex_time, n_ranks, speed_up = process_timings(timings, timer)
 plot_time_vs_ranks(ex_time, n_ranks)
+plot_speed_up_ranks(speed_up, n_ranks)
