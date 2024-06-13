@@ -74,6 +74,8 @@ def plot_time_vs_ranks(ex_time: list, x: list):
     ax.plot(x, ex_time, "o--", label=timer)
     ax.set_ylabel("Time (s)")
     ax.set_xlabel("Number of ranks")
+    ideal_time = [ex_time[0] * x[0]/val for val in x]
+    ax.plot(x, ideal_time, ":", label="ideal", color="k")
     plt.legend()
     plt.savefig(results_dir.joinpath("time_vs_ranks.svg"))
 
