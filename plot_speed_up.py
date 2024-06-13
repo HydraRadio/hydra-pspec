@@ -88,14 +88,24 @@ def plot_speed_up_ranks(speed_up: list, n_ranks: list):
     plt.savefig(results_dir.joinpath("speed_up.svg"))
 
 
-def plot_time_vs_ranks(ex_time: list, x: list):
-    """Plot speed up vs variable x (e.g. number of ranks)"""
+def plot_time_vs_ranks(timings: dict):
+    """Plot speed up vs number of ranks"""
     fig, ax = plt.subplots()
-    ax.plot(x, ex_time, "o--", label=timer)
+    t_total = timings["total"]
+    n_ranks = timings["n_ranks"]
+    t_process = timings["process"]
+    t_barrier = timings["barrier"]
+    t_scatter = timings["scatter"]
+    t_load = timings["load"]
+    ax.plot(n_ranks, t_load, label="load")
+    ax.plot(n_ranks, t_scatter, label="scatter")
+    ax.plot(n_ranks, t_barrier, label="barrier")
+    ax.plot(n_ranks, t_process, "+-", label="process")
+    ax.plot(n_ranks, t_total, "o--", label="total")
     ax.set_ylabel("Time (s)")
     ax.set_xlabel("Number of ranks")
-    ideal_time = [ex_time[0] * x[0]/val for val in x]
-    ax.plot(x, ideal_time, ":", label="ideal", color="k")
+    ideal_time = [t_total[0] * n_ranks[0]/val for val in n_ranks]
+    ax.plot(n_ranks, ideal_time, ":", label="ideal", color="k")
     plt.legend()
     plt.savefig(results_dir.joinpath("time_vs_ranks.svg"))
 
@@ -106,5 +116,5 @@ else:
     timer = "total"
 
 timings = process_timings(timing_logs)
-plot_time_vs_ranks(timings["total"], timings["n_ranks"])
+plot_time_vs_ranks(timings)
 plot_speed_up_ranks(timings["speed_up"], timings["n_ranks"])
