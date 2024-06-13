@@ -2,8 +2,8 @@
 
 #SBATCH --cpus-per-task 1
 #SBATCH --ntasks n_ranks
-#SBATCH --time 30:00
-#SBATCH --mem 64G
+#SBATCH --time 60:00
+#SBATCH --mem 1G
 #SBATCH --job-name job_name
 #SBATCH --partition cosma8-serial
 #SBATCH --account dp270
