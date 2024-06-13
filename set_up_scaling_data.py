@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 
 parser = argparse.ArgumentParser("Make data directory for scaling tests")
-parser.add_argument("--data_dir", type=str, help="Directory containing baseline data (all files in one dir")
+parser.add_argument("--data_dir", type=str, help="Directory containing baseline data (all files in one dir)")
 parser.add_argument("--num_baselines", type=int, help="Number of baseline directories to create")
 parser.add_argument("--dest_dir", type=str, help="Destination directory to copy data into")
 
