@@ -1,7 +1,7 @@
 # Analysis params
 ant_str: all 
 seed: 7123689
-Niter: 10
+Niter: 5
 Nproc: 1
 verbose: True
 ps_prior_lo: 0.1
