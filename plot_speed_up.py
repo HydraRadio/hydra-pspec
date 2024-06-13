@@ -40,18 +40,6 @@ if args.summary_file:
     results_dir = Path(args.summary_file).parent.resolve()
 
 
-def plot_speed_up_ranks(speed_up: list, n_ranks: list):
-    """Plot speed up vs number of ranks"""
-    fig, ax = plt.subplots()
-    ax.plot(n_ranks, speed_up, "o--", label=timer)
-    slope = 1/n_ranks[0]
-    ax.axline((n_ranks[0], speed_up[0]), slope=slope, linestyle=":", color="k", label="Ideal")
-    ax.set_ylabel("Speed up")
-    ax.set_xlabel("Number of ranks")
-    plt.legend()
-    plt.savefig(results_dir.joinpath("speed_up.svg"))
-
-
 def process_timings(data: list[dict]):
     "Extract execution time and number of ranks"
     n_ranks = []
@@ -86,6 +74,18 @@ def process_timings(data: list[dict]):
               "n_ranks": n_ranks,
               "speed_up": speed_up}
     return timings
+
+
+def plot_speed_up_ranks(speed_up: list, n_ranks: list):
+    """Plot speed up vs number of ranks"""
+    fig, ax = plt.subplots()
+    ax.plot(n_ranks, speed_up, "o--", label=timer)
+    slope = 1 / n_ranks[0]
+    ax.axline((n_ranks[0], speed_up[0]), slope=slope, linestyle=":", color="k", label="Ideal")
+    ax.set_ylabel("Speed up")
+    ax.set_xlabel("Number of ranks")
+    plt.legend()
+    plt.savefig(results_dir.joinpath("speed_up.svg"))
 
 
 def plot_time_vs_ranks(ex_time: list, x: list):
