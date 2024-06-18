@@ -480,6 +480,8 @@ if rank == 0:
     time_scatter_end = time.perf_counter()
     time_scatter = time_scatter_end - time_load_end
 
+write_times = []
+ant_pairs = []
 for data in list_of_baselines:
     antpair = data["antpair"]
     d = data["d"]
@@ -519,7 +521,7 @@ for data in list_of_baselines:
         print(f"Baseline: {antpair}", end="\n\n")
 
     # Run Gibbs sampler
-    signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post = \
+    signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post, write_time = \
         hp.pspec.gibbs_sample_with_fg(
             d,
             w[0],  # FIXME: add functionality for time-dependent flags
@@ -535,6 +537,10 @@ for data in list_of_baselines:
             write_Niter=args.write_Niter,
             out_dir=out_dir
         )
+    ant_pairs.append(str(antpair[0])+"_"+str(antpair[1]))
+    write_times.append(write_time)
+write_timings = {"rank": rank, "ant_pairs": ant_pairs, "write_times": write_times}
+gathered_write_timings = comm.gather(write_timings)
 
 pre_barrier = time.perf_counter()
 comm.barrier()
@@ -555,6 +561,7 @@ if rank == 0:
                                 "process": time_gibbs,
                                 "barrier": time_barrier,
                                 "total": time_overall}
+    timings["write_data"] = gathered_write_timings
 
     with open(Path(results_dir, "timings.json"), "w") as f:
         json.dump(timings, f, indent=2)
