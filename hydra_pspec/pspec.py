@@ -156,29 +156,31 @@ def gcr_fgmodes_1d(
     A = matrices[1][0]
     Ai = matrices[1][1]
 
-    if map_estimate:
-        oma = np.zeros((Nfreqs, 1), dtype=complex)
-        omb = np.zeros((Nfreqs, 1), dtype=complex)
-    else:
-        # Unit complex Gaussian random realisation
-        omi, omj = np.random.randn(Nfreqs, 1), np.random.randn(Nfreqs, 1)
-        omk, oml = np.random.randn(Nfreqs, 1), np.random.randn(Nfreqs, 1)
-        oma, omb = (omi + 1.0j * omj) / 2**0.5, (omk + 1.0j * oml) / 2**0.5
+    info = 1
+    while info > 0:
+        if map_estimate:
+            oma = np.zeros((Nfreqs, 1), dtype=complex)
+            omb = np.zeros((Nfreqs, 1), dtype=complex)
+        else:
+            # Unit complex Gaussian random realisation
+            omi, omj = np.random.randn(Nfreqs, 1), np.random.randn(Nfreqs, 1)
+            omk, oml = np.random.randn(Nfreqs, 1), np.random.randn(Nfreqs, 1)
+            oma, omb = (omi + 1.0j * omj) / 2**0.5, (omk + 1.0j * oml) / 2**0.5
 
-    # Construct RHS vector
-    b = np.zeros((Nfreqs + Nmodes, 1), dtype=complex)
-    b[:Nfreqs] = S @ Ni @ (w * d).T + Sh @ oma + S @ Nih @ omb
-    b[Nfreqs:] = fgmodes.T.conj() @ (Ni @ (w * d).T + Nih @ omb)
+        # Construct RHS vector
+        b = np.zeros((Nfreqs + Nmodes, 1), dtype=complex)
+        b[:Nfreqs] = S @ Ni @ (w * d).T + Sh @ oma + S @ Nih @ omb
+        b[Nfreqs:] = fgmodes.T.conj() @ (Ni @ (w * d).T + Nih @ omb)
 
-    # Run CG solver, preconditioned by M=Ai
-    x0 = None
-    if f0 is not None:
-        x0 = np.concatenate((np.zeros(Nfreqs, dtype=complex), f0))
-    xsoln, info = sp.sparse.linalg.cg(A, b, maxiter=int(1e5), x0=x0, M=Ai)
-    if verbose:
-        residual = np.abs(A @ xsoln - b[:, 0]).mean()
-    else:
-        residual = None
+        # Run CG solver, preconditioned by M=Ai
+        x0 = None
+        if f0 is not None:
+            x0 = np.concatenate((np.zeros(Nfreqs, dtype=complex), f0))
+        xsoln, info = sp.sparse.linalg.cg(A, b, maxiter=int(1e5), x0=x0, M=Ai)
+        if verbose:
+            residual = np.abs(A @ xsoln - b[:, 0]).mean()
+        else:
+            residual = None
 
     # Return solution vector
     return xsoln, residual, info
