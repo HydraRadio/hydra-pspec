@@ -511,6 +511,8 @@ def gibbs_sample_with_fg(
         ln_post (array_like):
             Natural log of the posterior probability per iteration, shape
             `(Niter,)`.
+        write_time:
+            Time spent writing data.
     """
     if map_estimate:
         Niter = 1
@@ -545,6 +547,7 @@ def gibbs_sample_with_fg(
     if verbose:
         print("Iter     Time [s]    Info    |Ax - b|    Chisq    ln Post")
         print("-----    --------    ----    --------    -----    -------")
+    write_time = 0
     for i in range(Niter):
         if verbose:
             print(f"{i+1:<9d}", end="")
@@ -566,6 +569,7 @@ def gibbs_sample_with_fg(
 
         if out_dir is not None and (i+1) % write_Niter == 0:
             # Write current set of samples to disk
+            write_time_start = time.perf_counter()
             utils.write_numpy_files(
                 out_dir,
                 signal_cr[:i+1],
@@ -575,9 +579,12 @@ def gibbs_sample_with_fg(
                 chisq[:i+1],
                 ln_post[:i+1]
             )
+            write_time_stop = time.perf_counter()
+            write_time += write_time_stop - write_time_start
     
     if out_dir is not None and Niter % write_Niter > 0:
         # Write all samples to disk
+        write_time_start = time.perf_counter()
         utils.write_numpy_files(
             out_dir,
             signal_cr,
@@ -587,8 +594,10 @@ def gibbs_sample_with_fg(
             chisq,
             ln_post
         )
+        write_time_stop = time.perf_counter()
+        write_time += write_time_stop - write_time_start
 
     if verbose:
         print()
 
-    return signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post
+    return signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post, write_time
