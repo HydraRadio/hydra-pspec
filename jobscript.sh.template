@@ -19,10 +19,10 @@ set -eu
 source .venv/bin/activate
 which python
 
-script="/cosma/home/dp270/dc-cape1/hydra-pspec/run-hydra-pspec.py"
+python_script="/cosma/home/dp270/dc-cape1/hydra-pspec/run-hydra-pspec.py"
 results_dir="@out_dir@/@n_ranks@ranks"
 args="--config config-scaling-test.yaml --dirname=${results_dir}"
 
-mpirun -n $SLURM_NTASKS python -u $script $args
+mpirun -n $SLURM_NTASKS python -u $python_script $args
 cp $0 ${results_dir}
 
