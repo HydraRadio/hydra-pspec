@@ -16,7 +16,6 @@ module load intel_comp/2020-update2
 module load intel_mpi/2020-update2
 set -eu
 
-source ~/.bashrc
 source .venv/bin/activate
 which python
 
