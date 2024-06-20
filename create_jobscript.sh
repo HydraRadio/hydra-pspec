@@ -5,6 +5,6 @@
 n_ranks=$1
 job_name="strongscaling_${n_ranks}ranks"
 results_dir=results/strong_scaling
-sed "s/n_ranks/${n_ranks}/g; s/job_name/${job_name}/g; s#out_dir#"${results_dir}"#g" \
+sed "s/@n_ranks@/${n_ranks}/g; s/@job_name@/${job_name}/g; s#@out_dir@#"${results_dir}"#g" \
     jobscript.sh.template > jobscript_${job_name}.sh
 mkdir -p slurm-logs

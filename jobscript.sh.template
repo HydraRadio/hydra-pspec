@@ -2,10 +2,10 @@
 
 #SBATCH --exclusive
 #SBATCH --cpus-per-task 1
-#SBATCH --ntasks n_ranks
+#SBATCH --ntasks @n_ranks@
 #SBATCH --time 5:00:00
 #SBATCH --mem 1G
-#SBATCH --job-name job_name
+#SBATCH --job-name @job_name@
 #SBATCH --partition cosma8-serial
 #SBATCH --account dp270
 #SBATCH --output=slurm-logs/%x.%j.out
@@ -20,7 +20,7 @@ source .venv/bin/activate
 which python
 
 script="/cosma/home/dp270/dc-cape1/hydra-pspec/run-hydra-pspec.py"
-results_dir="out_dir/n_ranksranks"
+results_dir="@out_dir@/@n_ranks@ranks"
 args="--config config-scaling-test.yaml --dirname=${results_dir}"
 
 mpirun -n $SLURM_NTASKS python -u $script $args
