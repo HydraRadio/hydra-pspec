@@ -65,15 +65,20 @@ def process_timings(data: list[dict]):
     time_barrier = [time_barrier[i] for i in sorted_indices]
     time_total = [time_total[i] for i in sorted_indices]
     n_ranks.sort()
-    speed_up = [time_total[0]/t for t in time_total]
+
 
     timings = {"load": time_load,
-              "scatter": time_scatter,
-              "process": time_process,
-              "barrier": time_barrier,
-              "total": time_total,
-              "n_ranks": n_ranks,
-              "speed_up": speed_up}
+               "scatter": time_scatter,
+               "process": time_process,
+               "barrier": time_barrier,
+               "total": time_total,
+               "n_ranks": n_ranks,
+              }
+
+    time_for_speedup = timings[timer]
+    speed_up = [time_for_speedup[0] / t for t in time_for_speedup]
+    timings["speed_up"] = speed_up
+
     return timings
 
 
