@@ -12,6 +12,22 @@ module load intel_mpi/2020-update2
 pip install .
 ```
 
+Each baseline is identical, so we use a script to duplicate and
+organise the data.
+The test data used for this is all in one directory e.g. ~/scaling-data
+where `ls` would give:
+
+```
+or-cov.npy      fake-telescope.yaml  noise-cov.npy  obsparams-select.yaml  vis-eor-fgs.uvh5
+fake-antpos.csv  fgmodes.npy          noise.npy      README                 vis-eor.uvh5
+```
+
+Then to duplicate and structure the data in a way that `hydra-pspec` is expecting, run:
+
+```
+python set_up_scaling_data.py --data_dir=${HOME}/scaling-data --num_baselines=4096 --dest_dir=scaling-data
+```
+
 The slurm jobscripts are created, and submitted like this,
 using 256 ranks (cores) as an example:
 
