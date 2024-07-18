@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser("Combine timing files and plot speed up.")
 group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument("--results_dir", type=str, help="Directory containing output from multiple runs (in subdirectories)")
 group.add_argument("--summary_file", type=str, help="File containing timings for all runs")
-parser.add_argument("--timer", type=str, help="Which timer to use")
+parser.add_argument("--timer", type=str, help="Which timer to compare with ideal scaling")
 
 
 args = parser.parse_args()
@@ -82,20 +82,26 @@ def process_timings(data: list[dict]):
     return timings
 
 
-def plot_speed_up_ranks(speed_up: list, n_ranks: list):
-    """Plot speed up vs number of ranks"""
+def plot_speed_up_ranks(speed_up: list, n_ranks: list, key_timer: str):
+    """Plot speed up vs number of ranks
+
+    <key_timer> is the timer to compare with ideal scaling
+    """
     fig, ax = plt.subplots()
-    ax.plot(n_ranks, speed_up, "o--", label=timer)
+    ax.plot(n_ranks, speed_up, "o--", label=key_timer)
     slope = 1 / n_ranks[0]
-    ax.axline((n_ranks[0], speed_up[0]), slope=slope, linestyle=":", color="k", label="Ideal")
+    ax.axline((n_ranks[0], speed_up[0]), slope=slope, linestyle=":", color="k", label="Ideal " + key_timer)
     ax.set_ylabel("Speed up")
     ax.set_xlabel("Number of ranks")
     plt.legend()
     plt.savefig(results_dir.joinpath("speed_up.svg"))
 
 
-def plot_time_vs_ranks(timings: dict):
-    """Plot speed up vs number of ranks"""
+def plot_time_vs_ranks(timings: dict, key_timer: str):
+    """Plot speed up vs number of ranks
+
+    <key_timer> is the timer to compare with ideal scaling
+    """
     fig, ax = plt.subplots()
     t_total = timings["total"]
     n_ranks = timings["n_ranks"]
@@ -110,8 +116,9 @@ def plot_time_vs_ranks(timings: dict):
     ax.plot(n_ranks, t_total, "o--", label="total")
     ax.set_ylabel("Time (s)")
     ax.set_xlabel("Number of ranks")
-    ideal_time = [t_total[0] * n_ranks[0]/val for val in n_ranks]
-    ax.plot(n_ranks, ideal_time, ":", label="ideal", color="k")
+    t_key = timings[key_timer]
+    ideal_time = [t_key[0] * n_ranks[0]/val for val in n_ranks]
+    ax.plot(n_ranks, ideal_time, ":", label="ideal " + key_timer, color="k")
     plt.legend()
     plt.savefig(results_dir.joinpath("time_vs_ranks.svg"))
 
@@ -122,5 +129,5 @@ else:
     timer = "total"
 
 timings = process_timings(timing_logs)
-plot_time_vs_ranks(timings)
-plot_speed_up_ranks(timings["speed_up"], timings["n_ranks"])
+plot_time_vs_ranks(timings, key_timer=timer)
+plot_speed_up_ranks(timings["speed_up"], timings["n_ranks"], key_timer=timer)
