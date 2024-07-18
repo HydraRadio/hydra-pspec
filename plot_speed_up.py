@@ -26,9 +26,10 @@ if args.results_dir:
     for dir_item in results_dir.iterdir():
         if dir_item.is_dir():
             file = dir_item.joinpath("timings.json")
-            with open(file) as f:
-                data = json.load(f)
-            timing_logs.append(data)
+            if file.is_file():
+                with open(file) as f:
+                    data = json.load(f)
+                timing_logs.append(data)
 
     with open(results_dir.joinpath("combined_timings.json"), "w") as f:
         # Save summary file
