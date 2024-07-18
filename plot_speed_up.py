@@ -94,7 +94,7 @@ def plot_speed_up_ranks(speed_up: list, n_ranks: list, key_timer: str):
     ax.set_ylabel("Speed up")
     ax.set_xlabel("Number of ranks")
     plt.legend()
-    plt.savefig(results_dir.joinpath("speed_up.svg"))
+    plt.savefig(results_dir.joinpath(f"speed_up-{key_timer}.svg"))
 
 
 def plot_time_vs_ranks(timings: dict, key_timer: str):
@@ -120,7 +120,7 @@ def plot_time_vs_ranks(timings: dict, key_timer: str):
     ideal_time = [t_key[0] * n_ranks[0]/val for val in n_ranks]
     ax.plot(n_ranks, ideal_time, ":", label="ideal " + key_timer, color="k")
     plt.legend()
-    plt.savefig(results_dir.joinpath("time_vs_ranks.svg"))
+    plt.savefig(results_dir.joinpath(f"time_vs_ranks-{key_timer}.svg"))
 
 
 if args.timer:
