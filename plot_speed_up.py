@@ -15,6 +15,7 @@ group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument("--results_dir", type=str, help="Directory containing output from multiple runs (in subdirectories)")
 group.add_argument("--summary_file", type=str, help="File containing timings for all runs")
 parser.add_argument("--timer", type=str, help="Which timer to compare with ideal scaling")
+parser.add_argument("--reference_nranks", type=int, help="Number of ranks to use as the scaling reference point")
 
 
 args = parser.parse_args()
@@ -41,7 +42,7 @@ if args.summary_file:
     results_dir = Path(args.summary_file).parent.resolve()
 
 
-def process_timings(data: list[dict]):
+def process_timings(data: list[dict], reference_nranks: int | None):
     "Extract execution time and number of ranks"
     n_ranks = []
     time_load = []
@@ -76,29 +77,33 @@ def process_timings(data: list[dict]):
               }
 
     time_for_speedup = timings[timer]
-    speed_up = [time_for_speedup[0] / t for t in time_for_speedup]
+    index = get_reference_index(n_ranks, reference_nranks)
+    speed_up = [time_for_speedup[index] / t for t in time_for_speedup]
     timings["speed_up"] = speed_up
 
     return timings
 
 
-def plot_speed_up_ranks(speed_up: list, n_ranks: list, key_timer: str):
+def plot_speed_up_ranks(speed_up: list, n_ranks: list, key_timer: str, reference_nranks: int):
     """Plot speed up vs number of ranks
 
     <key_timer> is the timer to compare with ideal scaling
     """
     fig, ax = plt.subplots()
     ax.plot(n_ranks, speed_up, "o--", label=key_timer)
-    slope = 1 / n_ranks[0]
-    ax.axline((n_ranks[0], speed_up[0]), slope=slope, linestyle=":", color="k", label="Ideal " + key_timer)
+    index = get_reference_index(n_ranks, reference_nranks)
+    slope = 1 / n_ranks[index]
+    ax.axline((n_ranks[index], speed_up[index]), slope=slope, linestyle=":", color="k", label="Ideal " + key_timer)
     ax.set_ylabel("Speed up")
     ax.set_xlabel("Number of ranks")
     ax.set_ylim(None, n_ranks[-1]*slope)
+    ax.vlines(reference_nranks, ax.get_ylim()[0], ax.get_ylim()[1], linestyle="--", color="grey",
+              label="Reference job size", linewidth=1)
     plt.legend()
     plt.savefig(results_dir.joinpath(f"speed_up-{key_timer}.svg"))
 
 
-def plot_time_vs_ranks(timings: dict, key_timer: str):
+def plot_time_vs_ranks(timings: dict, key_timer: str, reference_nranks: int | None):
     """Plot speed up vs number of ranks
 
     <key_timer> is the timer to compare with ideal scaling
@@ -118,17 +123,34 @@ def plot_time_vs_ranks(timings: dict, key_timer: str):
     ax.set_ylabel("Time (s)")
     ax.set_xlabel("Number of ranks")
     t_key = timings[key_timer]
-    ideal_time = [t_key[0] * n_ranks[0]/val for val in n_ranks]
+    index = get_reference_index(n_ranks, reference_nranks)
+    ideal_time = [t_key[index] * n_ranks[index]/val for val in n_ranks]
     ax.plot(n_ranks, ideal_time, ":", label="ideal " + key_timer, color="k")
+    ax.vlines(reference_nranks, ax.get_ylim()[0], ax.get_ylim()[1], linestyle="--", linewidth=1,
+              color="grey", label="Reference job size")
     plt.legend()
     plt.savefig(results_dir.joinpath(f"time_vs_ranks-{key_timer}.svg"))
 
+
+def get_reference_index(n_ranks: list, reference_nranks: int | None):
+    """Get index of reference job size"""
+    if reference_nranks:
+        ind = n_ranks.index(reference_nranks)
+    else:
+        ind = 0
+    return ind
 
 if args.timer:
     timer = args.timer
 else:
     timer = "total"
 
-timings = process_timings(timing_logs)
-plot_time_vs_ranks(timings, key_timer=timer)
-plot_speed_up_ranks(timings["speed_up"], timings["n_ranks"], key_timer=timer)
+if args.reference_nranks:
+    ref_point = args.reference_nranks
+else:
+    ref_point = None
+
+timings = process_timings(timing_logs, reference_nranks=ref_point)
+plot_time_vs_ranks(timings, key_timer=timer, reference_nranks=ref_point)
+plot_speed_up_ranks(timings["speed_up"], timings["n_ranks"], key_timer=timer, reference_nranks=ref_point)
+
