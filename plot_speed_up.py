@@ -93,6 +93,7 @@ def plot_speed_up_ranks(speed_up: list, n_ranks: list, key_timer: str):
     ax.axline((n_ranks[0], speed_up[0]), slope=slope, linestyle=":", color="k", label="Ideal " + key_timer)
     ax.set_ylabel("Speed up")
     ax.set_xlabel("Number of ranks")
+    ax.set_ylim(None, n_ranks[-1]*slope)
     plt.legend()
     plt.savefig(results_dir.joinpath(f"speed_up-{key_timer}.svg"))
 
