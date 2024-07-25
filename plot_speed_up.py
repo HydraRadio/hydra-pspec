@@ -53,11 +53,12 @@ def process_timings(data: list[dict], reference_nranks: int | None):
 
     for d in data:
         n_ranks.append(d["num_ranks"])
-        time_load.append((d["rank_0_timers"]["load_data"]))
-        time_scatter.append((d["rank_0_timers"]["scatter"]))
-        time_process.append((d["rank_0_timers"]["process"]))
-        time_barrier.append((d["rank_0_timers"]["barrier"]))
-        time_total.append((d["rank_0_timers"]["total"]))
+        time_load.append(d["rank_0_timers"]["load_data"])
+        time_scatter.append(d["rank_0_timers"]["scatter"])
+        time_process.append(d["rank_0_timers"]["process"])
+        time_barrier.append(d["rank_0_timers"]["barrier"])
+        time_total.append(d["rank_0_timers"]["total"])
+
 
     sorted_indices = sorted(range(len(n_ranks)), key=lambda i: n_ranks[i])
     time_load = [time_load[i] for i in sorted_indices]
