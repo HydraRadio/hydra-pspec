@@ -10,11 +10,18 @@ from pathlib import Path
 import json
 import matplotlib.pyplot as plt
 
-parser = argparse.ArgumentParser("Combine timing files and plot speed up.")
+parser = argparse.ArgumentParser("Combine timing files and plot speed up.", formatter_class=argparse.RawTextHelpFormatter)
 group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument("--results_dir", type=str, help="Directory containing output from multiple runs (in subdirectories)")
 group.add_argument("--summary_file", type=str, help="File containing timings for all runs")
-parser.add_argument("--timer", type=str, help="Which timer to compare with ideal scaling")
+parser.add_argument("--timer", type=str, help="Which timer to compare with ideal scaling\n"
+                                              "Possible values are:\n"
+                                              "- load\n"
+                                              "- scatter\n"
+                                              "- process\n"
+                                              "- barrier\n"
+                                              "- total\n"
+                                              "- total_minus_load")
 parser.add_argument("--reference_nranks", type=int, help="Number of ranks to use as the scaling reference point")
 
 
