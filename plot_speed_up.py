@@ -110,7 +110,7 @@ def plot_speed_up_ranks(speed_up: list, n_ranks: list, key_timer: str, reference
     ax.set_ylim(None, n_ranks[-1]*slope)
     ax.vlines(reference_nranks, ax.get_ylim()[0], ax.get_ylim()[1], linestyle="--", color="grey",
               label="Reference job size", linewidth=1)
-    plt.legend()
+    plt.legend(framealpha=1.0)
     plt.savefig(results_dir.joinpath(f"speed_up-{key_timer}.svg"))
 
 
@@ -141,7 +141,7 @@ def plot_time_vs_ranks(timings: dict, key_timer: str, reference_nranks: int | No
     ax.plot(n_ranks, ideal_time, ":", label="ideal " + key_timer, color="k")
     ax.vlines(reference_nranks, ax.get_ylim()[0], ax.get_ylim()[1], linestyle="--", linewidth=1,
               color="grey", label="Reference job size")
-    plt.legend()
+    plt.legend(framealpha=1.0)
     plt.savefig(results_dir.joinpath(f"time_vs_ranks-{key_timer}.svg"))
 
 
