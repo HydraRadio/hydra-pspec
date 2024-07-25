@@ -43,3 +43,7 @@ Then to create scaling plots
 source .venv/bin/activate
 python plot_speed_up.py --results_dir=results/strong_scaling
 ```
+
+The default option here looks at total time, using the smallest job size (fewest ranks)
+as the reference job size, but `python plot_speed_up.py --help` show the options available
+for using different timers, or number of ranks as the reference job.
