@@ -50,6 +50,7 @@ def process_timings(data: list[dict], reference_nranks: int | None):
     time_process = []
     time_barrier = []
     time_total = []
+    time_total_minus_load = []
 
     for d in data:
         n_ranks.append(d["num_ranks"])
@@ -58,7 +59,7 @@ def process_timings(data: list[dict], reference_nranks: int | None):
         time_process.append(d["rank_0_timers"]["process"])
         time_barrier.append(d["rank_0_timers"]["barrier"])
         time_total.append(d["rank_0_timers"]["total"])
-
+        time_total_minus_load.append(d["rank_0_timers"]["total"] - d["rank_0_timers"]["load_data"])
 
     sorted_indices = sorted(range(len(n_ranks)), key=lambda i: n_ranks[i])
     time_load = [time_load[i] for i in sorted_indices]
@@ -66,6 +67,7 @@ def process_timings(data: list[dict], reference_nranks: int | None):
     time_process = [time_process[i] for i in sorted_indices]
     time_barrier = [time_barrier[i] for i in sorted_indices]
     time_total = [time_total[i] for i in sorted_indices]
+    time_total_minus_load = [time_total_minus_load[i] for i in sorted_indices]
     n_ranks.sort()
 
 
@@ -75,6 +77,7 @@ def process_timings(data: list[dict], reference_nranks: int | None):
                "barrier": time_barrier,
                "total": time_total,
                "n_ranks": n_ranks,
+               "total_minus_load": time_total_minus_load
               }
 
     time_for_speedup = timings[timer]
@@ -116,11 +119,13 @@ def plot_time_vs_ranks(timings: dict, key_timer: str, reference_nranks: int | No
     t_barrier = timings["barrier"]
     t_scatter = timings["scatter"]
     t_load = timings["load"]
+    t_total_minus_load = timings["total_minus_load"]
     ax.plot(n_ranks, t_load, label="load")
     ax.plot(n_ranks, t_scatter, label="scatter")
     ax.plot(n_ranks, t_barrier, label="barrier")
     ax.plot(n_ranks, t_process, "+-", label="process")
     ax.plot(n_ranks, t_total, "o--", label="total")
+    ax.plot(n_ranks, t_total_minus_load, "^-", label="total - load")
     ax.set_ylabel("Time (s)")
     ax.set_xlabel("Number of ranks")
     t_key = timings[key_timer]
