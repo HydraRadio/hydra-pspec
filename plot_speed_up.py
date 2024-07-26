@@ -130,9 +130,9 @@ def plot_time_vs_ranks(timings: dict, key_timer: str, reference_nranks: int | No
     ax.plot(n_ranks, t_load, label="load")
     ax.plot(n_ranks, t_scatter, label="scatter")
     ax.plot(n_ranks, t_barrier, label="barrier")
-    ax.plot(n_ranks, t_process, "+-", label="process")
-    ax.plot(n_ranks, t_total, "o--", label="total")
-    ax.plot(n_ranks, t_total_minus_load, "^-", label="total - load")
+    ax.plot(n_ranks, t_process, "v-", label="process", markerfacecolor='none')
+    ax.plot(n_ranks, t_total, "o--", label="total", markerfacecolor='none')
+    ax.plot(n_ranks, t_total_minus_load, "^--", label="total - load", markerfacecolor='none',)
     ax.set_ylabel("Time (s)")
     ax.set_xlabel("Number of ranks")
     t_key = timings[key_timer]
@@ -142,6 +142,7 @@ def plot_time_vs_ranks(timings: dict, key_timer: str, reference_nranks: int | No
     ax.vlines(reference_nranks, ax.get_ylim()[0], ax.get_ylim()[1], linestyle="--", linewidth=1,
               color="grey", label="Reference job size")
     plt.legend(framealpha=1.0)
+    ax.set_yscale("log")
     plt.savefig(results_dir.joinpath(f"time_vs_ranks-{key_timer}.svg"))
 
 
