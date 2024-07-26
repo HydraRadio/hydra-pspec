@@ -19,7 +19,7 @@ set -eu
 source .venv/bin/activate
 which python
 
-python_script="/cosma/home/dp270/dc-cape1/hydra-pspec/run-hydra-pspec.py"
+python_script="/cosma8/data/dp270/dc-cape1/hydra-pspec/run-hydra-pspec.py"
 results_dir="@out_dir@/@n_ranks@ranks"
 args="--config config-scaling-test.yaml --dirname=${results_dir}"
 
