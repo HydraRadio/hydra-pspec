@@ -50,7 +50,8 @@ as the reference job size, but `python plot_speed_up.py --help` show the options
 for using different timers, or number of ranks as the reference job.
 
 ## Results
-We have run hydra-pspec using the example with 4096 identical baselines,
+We have run hydra-pspec (commit ID 53474e02f3c46905669031476d3581140469f56f)
+using the example with 4096 identical baselines,
 and fixed the random seed. As such we got identical results for all baselines and
 job sizes, which is what we wanted for scaling tests - the idea being that we have
 removed any variability from some baselines taking longer to process than others.
