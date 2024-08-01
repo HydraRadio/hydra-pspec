@@ -15,7 +15,7 @@ pip install .
 
 Each baseline is identical, so we use a script to duplicate and
 organise the data.
-The test data used for this is all in one directory e.g. ~/scaling-data
+The [test data][test_data] used for this is all in one directory e.g. ~/scaling-data
 where `ls` would give:
 
 ```
@@ -80,3 +80,10 @@ The actual scatter doesn't appreciably affect the total time, nor is there
 much wait time at the barrier at the end.
 
 ![](strong_scaling_plots/time_vs_ranks-total.svg)
+
+A [subset of the results][results], including the timing logs and one set of output files
+(because the output is identical for every baseline pair) can be used to recreate
+the above plots.
+
+[test_data]: https://github.com/user-attachments/files/16455077/scaling-data.tar.gz
+[results]: https://github.com/user-attachments/files/16455075/results.tar.gz
