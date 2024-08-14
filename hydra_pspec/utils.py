@@ -10,6 +10,8 @@ import subprocess
 import os
 from pathlib import Path
 from datetime import datetime
+from scipy.optimize import lsq_linear
+from pprint import pprint
 
 def fourier_operator(n):
     """
@@ -38,6 +40,118 @@ def fourier_operator(n):
     fourier_op = np.exp(-2*np.pi*1j * (i_k * i_x / n))
 
     return fourier_op
+
+
+def fourier_basis(x, k_pix=None, Lx=None, x0=0):
+    """
+    Define a linear operator for a complex Fourier basis with specific modes.
+
+    Parameters
+    ----------
+    x : array_like
+        Input data coordinates.
+    k_pix : array_like, optional
+        Fourier dual coordinates in pixel units.  Defaults to
+        ``np.arange(x.size) - x.size//2`` to match the Fourier modes used
+        by ``np.fft``.  Pixel units can be computed as the wavenumber
+        times the bandwidth which is dimensionless.  For example, if
+        ``k_pix = [-2, 1]``, the Fourier dual coordinates used in the
+        basis will be ``kx = [-2 / Lx, 1 / Lx]``.
+    Lx : float, optional
+        Effective bandwidth of the input data.  Defaults to
+        ``x.size - (x[1] - x[0])``, i.e. the bandwidth of the
+        `x` assuming that `x` is uniformly spaced.
+    x0 : float, optional
+        Reference value for the input data coordinates.
+        Defaults to 0.
+
+    Returns
+    -------
+    kx : np.ndarray
+        Fourier dual coordinates.
+    F : np.ndarray
+        Complex array containing the Fourier basis vectors as columns.
+
+    """
+    xx = x - x0
+
+    if Lx is None:
+        Lx = x.size * (x[1] - x[0])
+
+    # Calculate wavenumbers for each mode
+    if k_pix is None:
+        k_pix = np.arange(x.size) - x.size//2
+    k_pix = np.atleast_1d(k_pix)
+    kx = k_pix / Lx  # inverse freq. units
+
+    # Fourier operator
+    F = np.exp(-2*np.pi*1.j * kx[:, np.newaxis] * xx[np.newaxis, :])
+
+    return kx, F
+
+
+def fourier_fit(x, y, k_pix=None, Lx=None, x0=0, verbose=False):
+    """
+    Linear least squares fit to a Fourier basis ignoring noise etc.
+
+    Parameters
+    ----------
+    x : array_like
+        Input data coordinates.
+    y : array_like
+        Data values with same shape as `x`.
+    k_pix : array_like, optional
+        Fourier dual coordinates in pixel units.  Defaults to
+        ``np.arange(x.size) - x.size//2`` to match the Fourier modes used
+        by ``np.fft``.  Pixel units can be computed as the wavenumber
+        times the bandwidth which is dimensionless.  For example, if
+        ``k_pix = [-2, 1]``, the Fourier dual coordinates used in the
+        basis will be ``kx = [-2 / Lx, 1 / Lx]``.
+    Lx : float, optional
+        Effective bandwidth of the input data.  Defaults to
+        ``x.size - (x[1] - x[0])``, i.e. the bandwidth of the
+        `x` assuming that `x` is uniformly spaced.
+    x0 : float, optional
+        Reference value for the input data coordinates.  For
+        agreement with ``np.fft`` routines, this value should be set
+        as the middle value of `x`, i.e. ``x[x.size//2]``.  Defaults
+        to 0.
+    verbose : bool, optional
+        If True, print the full results of the linear least squares
+        fit.  Defaults to False.
+
+    Returns
+    -------
+    kx : np.ndarray
+        Fourier dual coordinates.
+    F : np.ndarray
+        Complex array containing the Fourier basis vectors as columns.
+    fit_coeffs : array_like
+        Array of complex fit coefficients.
+    y_fit : array_like
+        Linear least squares fit to and with the same shape as `y`.
+
+    Notes
+    -----
+    * `scipy.optimize.lsq_linear` minimizes real residuals.  If the
+      input data `y` are complex, this method 'realifies' the inputs
+      by creating concatenated vectors of real and imaginary
+      components, e.g. by defining
+      ``y_cat = np.concatenate((y.real, y.imag))``.
+    """
+    kx, F = fourier_basis(x, k_pix=k_pix, Lx=Lx, x0=x0)
+    Nfreqs = x.size  # WARNING: this was set to kx.size (which I think is wrong?)
+
+    # Find linear least squares fit and calculate best-fit function
+    # The 1 / Nfreqs normalization is a normalization constant
+    # for F.conj().T which enforces that F is unitary.
+    res = lsq_linear(F.T / Nfreqs, y)
+    if verbose:
+        pprint(res)
+    fit_coeffs = res['x']
+    y_fit = F.T @ fit_coeffs / Nfreqs
+        
+    return kx, F, fit_coeffs, y_fit
 
 
 def naive_pspec(data, subtract_mean=True, taper=True):

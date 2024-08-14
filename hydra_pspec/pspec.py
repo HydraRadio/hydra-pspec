@@ -9,6 +9,7 @@ from multiprocess import Pool, current_process
 from . import utils
 import os, time
 
+from .pspec import fourier_fit
 
 def sample_S(s=None, sk=None, prior=None):
     """
@@ -35,10 +36,10 @@ def sample_S(s=None, sk=None, prior=None):
         raise ValueError("Must pass in s (real space) or sk (Fourier space) vector.")
 
     if sk is None:
-        axes = (1,)
-        sk = np.fft.ifftshift(s, axes=axes)
-        sk = np.fft.fftn(sk, axes=axes)
-        sk = np.fft.fftshift(sk, axes=axes)
+        # Fit the signal with Fourier modes instead of doing an FFT/DFT
+        # which will result in e.g. ringing for non-periodic signals
+        for i in range(s.shape[0]):
+            sk = fourier_fit(np.arange(s.shape[1]), s[i])[2]
     Nobs, Nfreqs = sk.shape
 
     if prior is None:
