@@ -15,11 +15,11 @@ pip install .
 
 Each baseline is identical, so we use a script to duplicate and
 organise the data.
-The [test data][test_data] used for this is all in one directory e.g. ~/scaling-data
+The [test data][test_data] used for this is all in one directory e.g. `~/scaling-data`
 where `ls` would give:
 
 ```
-or-cov.npy      fake-telescope.yaml  noise-cov.npy  obsparams-select.yaml  vis-eor-fgs.uvh5
+eor-cov.npy      fake-telescope.yaml  noise-cov.npy  obsparams-select.yaml  vis-eor-fgs.uvh5
 fake-antpos.csv  fgmodes.npy          noise.npy      README                 vis-eor.uvh5
 ```
 
