@@ -11,17 +11,17 @@ n_ps_prior_bins: 3
 dirname: "results-seed-7123689-Niter-1000"
 clobber: False
 # Signal model
-sigcov0: "./test-data/eor-cov/"
-sigcov0_file: "cov.npy"
+sigcov0: "./test_data/eor-cov/"
+sigcov0_file: "eor-cov.npy"
 # FG model
 Nfgmodes: 12
-fgmodes: "./test-data/fgmodes/"
+fgmodes: "./test_data/fgmodes/"
 fgmodes_file: "fgmodes.npy"
 # Noise
-noise: "./test-data/noise/"
+noise: "./test_data/noise/"
 noise_file: "noise.npy"
-noise_cov: "./test-data/noise/"
-noise_cov_file: "cov.npy"
+noise_cov: "./test_data/noise/"
+noise_cov_file: "noise-cov.npy"
 # Input files
 file_paths:
 - "./test-data/vis-eor-fgs.uvh5"
