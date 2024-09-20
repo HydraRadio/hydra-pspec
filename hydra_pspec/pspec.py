@@ -63,10 +63,21 @@ def sample_S(s=None, sk=None, prior=None):
             # shape parameter alpha + 1.
             x[i] = invgamma.rvs(a=alpha+1) * beta[i]
             outside_prior = x[i] > prior[0, i] or x[i] < prior[1, i]
+
             if outside_prior:
                 # Resample until we obtain a sample within the prior bounds
+                resamples = 0
                 while x[i] > prior[0, i] or x[i] < prior[1, i]:
                     x[i] = invgamma.rvs(a=alpha+1) * beta[i]
+                    resamples += 1
+                    if resamples % 20 == 0:
+                        print("    debug: %d resamples of power spectrum" % (resamples))
+                    if resamples > 1000:
+                        print("alpha =", alpha)
+                        print("beta =", beta[i])
+                        print("x[i] =", x[i])
+                        print("prior =", prior[0,i], prior[1,i])
+                        raise ValueError("Failed to draw sample of power spectrum.")
         else:
             x[i] = invgamma.rvs(a=alpha) * beta[i]
 
@@ -171,7 +182,7 @@ def gcr_fgmodes_1d(
     x0 = None
     if f0 is not None:
         x0 = np.concatenate((np.zeros(Nfreqs, dtype=complex), f0))
-    xsoln, info = sp.sparse.linalg.cg(A, b, maxiter=int(1e5), x0=x0, M=Ai)
+    xsoln, info = sp.sparse.linalg.cg(A, b, maxiter=int(1e5), rtol=1e-8, atol=1e-6, x0=x0, M=Ai)
     if verbose:
         residual = np.abs(A @ xsoln - b[:, 0]).mean()
     else:
@@ -229,6 +240,7 @@ def gcr_fgmodes(
     # Run GCR method on each time sample in parallel
     if verbose:
         st = time.time()
+
     with Pool(nproc) as pool:
         samples, residuals, info = zip(*pool.map(
             lambda idx: gcr_fgmodes_1d(

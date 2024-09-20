@@ -346,6 +346,7 @@ if rank == 0:
     out_dir.mkdir(exist_ok=True, parents=True)
     print(f"\nWriting output(s) to {out_dir.absolute()}", end="\n\n")
     results_dir = out_dir
+    
     # Catalog git version
     try:
         git_info = get_git_version_info()
@@ -353,7 +354,11 @@ if rank == 0:
         git_info = ''
     with open(out_dir / "git.json", "w") as f:
         json.dump(git_info, f, indent=2)
+    
     # Catalog command line arguments
+    if args.clobber and os.path.isfile(out_dir / "args.json"):
+        # Remove existing file if clobber=True
+        os.remove(out_dir / "args.json")
     parser.save(args, out_dir / "args.json", format="json_indented", skip_none=False)
     if "SLURM_JOB_ID" in os.environ:
         # If running in SLURM, create empty file named with the SLURM Job ID
@@ -430,7 +435,7 @@ if rank == 0:
             check_shape(noise_cov.shape, cov_ff_shape, desc="noise covariance")
             Ninv = np.linalg.inv(noise_cov)
         else:
-            Ninv = np.eye(Nfreqs)
+            Ninv = np.eye(Nfreqs) / (10.)**2. # FIXME
 
         if args.fgmodes:
             fgmodes_path = Path(args.fgmodes)
@@ -520,11 +525,20 @@ for data in list_of_baselines:
         print(f"Rank:     {rank}")
         print(f"Baseline: {antpair}", end="\n\n")
 
+
+    # Calculate time-independent flags based on whether *any* times have 
+    # flags in each channel
+    w_any = np.ones_like(w[0]) # all set to True (= not flagged)
+    for jj in range(w_any.size):
+        # Check if there are any times flagged in this channel
+        if np.any(~w[:,jj]):
+            w_any[jj] = False
+
     # Run Gibbs sampler
     signal_cr, signal_S, signal_ps, fg_amps, chisq, ln_post, write_time = \
         hp.pspec.gibbs_sample_with_fg(
             d,
-            w[0],  # FIXME: add functionality for time-dependent flags
+            w_any,  # FIXME: add functionality for time-dependent flags
             S_initial,
             fgmodes,
             Ninv,
