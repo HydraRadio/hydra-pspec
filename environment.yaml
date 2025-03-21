@@ -2,10 +2,14 @@ name: hydra-pspec
 channels:
   - conda-forge
 dependencies:
-  - numpy
-  - mkl
-  - scipy
+  - astropy
+  - jsonargparse
   - matplotlib
+  - mkl  # optional to use Intel MKL with numpy
   - mpi4py
   - multiprocess
-  - jsonargparse
+  - numpy
+  - pyuvdata
+  - scipy
+  - setuptools
+  - setuptools_scm
