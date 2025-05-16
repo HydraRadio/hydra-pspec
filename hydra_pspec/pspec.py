@@ -107,7 +107,7 @@ def sample_S(s=None, sk=None, prior=None):
             # prior, we thus sample from an inverse gamma distribution with
             # shape parameter alpha + 1.
             x[i] = inversion_sample_invgamma(
-                alpha, beta[i], prior[1, i], prior[0, i]
+                alpha+1, beta[i], prior[1, i], prior[0, i]
             )
         else:
             x[i] = invgamma.rvs(a=alpha) * beta[i]
