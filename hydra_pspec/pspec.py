@@ -24,7 +24,7 @@ def inversion_sample_invgamma(alpha, beta, prior_min, prior_max, ngrid=1000):
             Inverse gamma beta (scale) parameter.
         prior_min (float):
             Minimum of the prior range.  The log10 of this value will be taken.
-            As such, `prior_min` must be greater than to zero.
+            As such, `prior_min` must be greater than zero.
         prior_max (float):
             Maximum of the prior range.  The log10 of this value will be taken.
             `prior_max` must be greater than zero, finite, and greater than
