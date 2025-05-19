@@ -1,10 +1,67 @@
 import numpy as np
 import scipy as sp
+from scipy.interpolate import interp1d
 from scipy.stats import invgamma
 
 from multiprocess import Pool, current_process
 from . import utils
 import time
+
+
+def inversion_sample_invgamma(alpha, beta, prior_min, prior_max, ngrid=1000):
+    """
+    Draw a sample from an inverse gamma distribution between prior bounds using
+    inversion sampling.
+    
+    This works by sampling the cdf of the inverse gamma distribution 
+    on a (logarithmic) grid and then interpolating to convert a uniform 
+    random draw into a random draw with the correct PDF.
+
+    Parameters:
+        alpha (float):
+            Inverse gamma alpha parameter.
+        beta (float):
+            Inverse gamma beta (scale) parameter.
+        prior_min (float):
+            Minimum of the prior range.  The log10 of this value will be taken.
+            As such, `prior_min` must be greater than zero.
+        prior_max (float):
+            Maximum of the prior range.  The log10 of this value will be taken.
+            `prior_max` must be greater than zero, finite, and greater than
+            `prior_min`.
+        ngrid (int):
+            Number of sample points to use for interpolator.  Defaults to 1000.
+
+    Returns:
+        sample (float):
+            Sample drawn from the inverse gamma distribution between the 
+            specified prior bounds.
+    """
+    if prior_min <= 0:
+        raise ValueError("prior_min must be greater than zero")
+    if prior_max <= 0:
+        raise ValueError("prior_max must be greater than zero")
+    if not np.isfinite(prior_max):
+        raise ValueError("prior_max must be finite")
+    if prior_max <= prior_min:
+        raise ValueError("prior_max must be greater than prior_min")
+
+    # Sample cdf logarithmically between provided prior bounds
+    x = np.logspace(np.log10(prior_min), np.log10(prior_max), ngrid)
+    cdf = invgamma.cdf(x, a=alpha, loc=0, scale=beta)
+    cdf -= cdf.min()  # shift minimum down to zero
+    cdf /= cdf.max()  # rescale maximum to 1
+
+    # Remove duplicate entries in cdf so interpolator can work properly; 
+    # tends to result in sample points near the extrema of the prior bounds
+    cdf_unique, idxs_unique = np.unique(cdf, return_index=True)
+    u = np.random.uniform()
+    # Draw sample using inversion sampling method
+    # Warning: must use linear interpolation to avoid
+    # very bad interpolation results
+    sample = interp1d(cdf_unique, x[idxs_unique], kind='linear')(u)
+
+    return sample
 
 
 def sample_S(s=None, sk=None, prior=None):
@@ -61,23 +118,9 @@ def sample_S(s=None, sk=None, prior=None):
             # value of the shape parameter (alpha) by 1.  With a log-uniform
             # prior, we thus sample from an inverse gamma distribution with
             # shape parameter alpha + 1.
-            x[i] = invgamma.rvs(a=alpha+1) * beta[i]
-            outside_prior = x[i] > prior[0, i] or x[i] < prior[1, i]
-
-            if outside_prior:
-                # Resample until we obtain a sample within the prior bounds
-                resamples = 0
-                while x[i] > prior[0, i] or x[i] < prior[1, i]:
-                    x[i] = invgamma.rvs(a=alpha+1) * beta[i]
-                    resamples += 1
-                    if resamples % 20 == 0:
-                        print("    debug: %d resamples of power spectrum" % (resamples))
-                    if resamples > 1000:
-                        print("alpha =", alpha)
-                        print("beta =", beta[i])
-                        print("x[i] =", x[i])
-                        print("prior =", prior[0,i], prior[1,i])
-                        raise ValueError("Failed to draw sample of power spectrum.")
+            x[i] = inversion_sample_invgamma(
+                alpha+1, beta[i], prior[1, i], prior[0, i]
+            )
         else:
             x[i] = invgamma.rvs(a=alpha) * beta[i]
 
