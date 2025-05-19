@@ -23,9 +23,12 @@ def inversion_sample_invgamma(alpha, beta, prior_min, prior_max, ngrid=1000):
         beta (float):
             Inverse gamma beta (scale) parameter.
         prior_min (float):
-            Minimum of the prior range.
+            Minimum of the prior range.  The log10 of this value will be taken.
+            As such, `prior_min` must be greater than to zero.
         prior_max (float):
-            Maximum of the prior range.
+            Maximum of the prior range.  The log10 of this value will be taken.
+            `prior_max` must be greater than zero, finite, and greater than
+            `prior_min`.
         ngrid (int):
             Number of sample points to use for interpolator.  Defaults to 1000.
 
@@ -34,6 +37,15 @@ def inversion_sample_invgamma(alpha, beta, prior_min, prior_max, ngrid=1000):
             Sample drawn from the inverse gamma distribution between the 
             specified prior bounds.
     """
+    if prior_min <= 0:
+        raise ValueError("prior_min must be greater than zero")
+    if prior_max <= 0:
+        raise ValueError("prior_max must be greater than zero")
+    if not np.isfinite(prior_max):
+        raise ValueError("prior_max must be finite")
+    if prior_max <= prior_min:
+        raise ValueError("prior_max must be greater than prior_min")
+
     # Sample cdf logarithmically between provided prior bounds
     x = np.logspace(np.log10(prior_min), np.log10(prior_max), ngrid)
     cdf = invgamma.cdf(x, a=alpha, loc=0, scale=beta)
