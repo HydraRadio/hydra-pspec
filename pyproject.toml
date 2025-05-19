@@ -22,7 +22,6 @@ dependencies = [
     "astropy",
     "jsonargparse",
     "matplotlib",
-    "mpi4py",
     "multiprocess",
     "numpy",
     "pyuvdata",
