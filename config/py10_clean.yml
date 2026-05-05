@@ -1,0 +1,14 @@
+name: py10
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy
+  - matplotlib
+  - mpi4py
+  - scipy
+  - pathlib
+  - astropy
+  - multiprocess
+  - jupyter
+prefix: /Users/user/miniconda3/envs/py10
