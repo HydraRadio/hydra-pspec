@@ -182,9 +182,7 @@ def gcr_fg_modes_1d(
         map_estimate (bool):
             Provide the maximum a posteriori sample.
         preconditioner (int):
-            If None, don't use a preconditioner. If a positive integer (=k), 
-            use an approximate inverse constructed using the first k 
-            eigenvectors of the operator matrix. If -1, use a full 
+            If None, don't use a preconditioner. If -1, use a full 
             pseudo-inverse.
         verbose (bool):
             If True, output basic timing stats about each iteration.
@@ -252,18 +250,13 @@ def gcr_fg_modes_1d(
     A[Nfreqs:, :Nfreqs] = fg_modes.T.conj() @ Ninv_mat
     A[Nfreqs:, Nfreqs:] = fg_modes.T.conj() @ Ninv_mat @ fg_modes
     
-    # Calculate pseudo-inverse of operator to use as preconditioner
-    # FIXME: Is it worth including this step? Might be very slow!
+    # Select preconditioner (may be slower than just solving!)
     if preconditioner is None:
         # Trivial identity preconditioner
         Ainv = np.eye(A.shape[0])
-    elif preconditioner > 0:
-        # Use first k eigenvalues 
-        eig, eigvec = eigsh(A, k=int(preconditioner))
-        Ainv = eigvec @ np.diag(1./eig) @ eigvec.T
     else:
-        Ainv = np.linalg.pinv(A, hermitian=True)
-
+        Ainv = np.linalg.pinv(A, hermitian=False)
+    
     # Run linear solver, preconditioned by M=Ainv
     x0 = None
     if f0 is not None:
@@ -287,7 +280,7 @@ def gcr_fg_modes_1d(
 
 def gcr_fg_modes(
     vis, matrices, fg_modes, f0=None, nproc=1, map_estimate=False,
-    linear_solver=sp.sparse.linalg.cg, verbose=False
+    preconditioner=None, linear_solver=sp.sparse.linalg.cg, verbose=False
 ):
     """
     Perform the GCR step on all time samples, using parallelisation if
@@ -310,7 +303,11 @@ def gcr_fg_modes(
         nproc (int):
             Number of processes to use for parallelised functions.
         map_estimate (bool):
-            Provide the maximum a posteriori sample.
+            Provide the maximum a posteriori estimate rather than drawing a 
+            sample.
+        preconditioner (int):
+            If None, don't use a preconditioner. If -1, use a full 
+            pseudo-inverse.
         linear_solver (func):
             Linear solver function, from `scipy.sparse.linalg`.
         verbose (bool):
@@ -364,6 +361,7 @@ def gcr_fg_modes(
                                                 fg_modes=fg_modes,
                                                 f0=f0,
                                                 map_estimate=map_estimate,
+                                                preconditioner=preconditioner,
                                                 linear_solver=linear_solver,
                                                 verbose=verbose
                                             )
@@ -401,7 +399,8 @@ def covariance_from_pspec(ps, fourier_op):
 
 def gibbs_step_fg_modes(
     vis, flags, signal_S, fg_modes, inv_var, ps_prior=None, f0=None, nproc=1,
-    map_estimate=False, linear_solver=sp.sparse.linalg.cg, verbose=False
+    map_estimate=False, preconditioner=None, linear_solver=sp.sparse.linalg.cg, 
+    verbose=False
 ):
     """
     Perform a single Gibbs iteration for a Gibbs sampling scheme using a foreground model
@@ -430,6 +429,9 @@ def gibbs_step_fg_modes(
             Number of processes to use for parallelised functions.
         map_estimate (bool):
             Provide the maximum a posteriori sample.
+        preconditioner (int):
+            If None, don't use a preconditioner. If -1, use a full 
+            pseudo-inverse.
         linear_solver (func):
             Linear solver function, from `scipy.sparse.linalg`.
         verbose (bool):
@@ -471,6 +473,7 @@ def gibbs_step_fg_modes(
                      f0=f0, 
                      nproc=nproc,
                      map_estimate=map_estimate, 
+                     preconditioner=preconditioner,
                      linear_solver=linear_solver,
                      verbose=verbose
     )
@@ -532,6 +535,7 @@ def gibbs_sample_with_fg(
     write_Niter=100,
     out_dir=None,
     map_estimate=False,
+    preconditioner=None,
     linear_solver=sp.sparse.linalg.cg,
 ):
     """
@@ -577,6 +581,9 @@ def gibbs_sample_with_fg(
         map_estimate (bool):
             Provide the maximum a posteriori sample only, i.e. sets
             `Niter = 1`.
+        preconditioner (int):
+            If None, don't use a preconditioner. If -1, use a full 
+            pseudo-inverse.
         linear_solver (func):
             Linear solver function, from `scipy.sparse.linalg`.
 
@@ -650,6 +657,7 @@ def gibbs_sample_with_fg(
                 f0=None,
                 nproc=nproc,
                 map_estimate=map_estimate,
+                preconditioner=preconditioner,
                 linear_solver=linear_solver,
                 verbose=verbose
             )
