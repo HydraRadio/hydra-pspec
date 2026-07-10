@@ -12,6 +12,25 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
+
+def _ps_mode_map(Nfreqs, modes_per_bin):
+    """
+    Mapping between Fourier (delay) modes and power spectrum bins.
+    
+    Parameters:
+        Nfreqs (int):
+            Number of frequency channels.
+        modes_per_bin (int):
+            Number of delay modes in each delay power spectrum bin.
+    
+    Returns:
+        mapping (list of array_like):
+            List of arrays, one array for each delay bin. Each array contains 
+            the Fourier mode indices for that bin.
+    """
+    return np.array_split(np.arange(Nfreqs), Nfreqs // modes_per_bin)
+
+
 def fourier_operator(n):
     """
     Fourier operator for matrix side length n.
@@ -28,17 +47,50 @@ def fourier_operator(n):
 
     Parameters:
     	n (int):
-    		Length of the data that the operator will be applied to.
+    		Length of the data that the operator will be applied to. This 
+    		should be a multiple of 2 (but doesn't have to be a power of two). 
 
     Returns:
     	fourier_op (array_like):
     		Complex Fourier operator matrix of shape `(n, n)`.
     """
+    if n % 2 == 1:
+        raise ValueError("Length must even (divisible by 2)")
     i_x = (np.arange(n) - n//2).reshape(1, -1)
     i_k = (np.arange(n) - n//2).reshape(-1, 1)
     fourier_op = np.exp(-2*np.pi*1j * (i_k * i_x / n))
 
     return fourier_op
+
+
+def tau_bins(freqs_MHz, modes_per_bin=1):
+    """
+    Calculate delay bin centre values for a given frequency band and binning. 
+    Includes the correct ordering of the delay bins (matched to the ordering of 
+    the `fourier_operator()` function).
+    
+    Parameters:
+        freqs_MHz (array_like):
+            Frequency array.
+        modes_per_bin (int):
+            Number of delay modes in each delay power spectrum bin.
+            
+    Returns:
+        tau (array_like):
+            Array of delay values at bin centre, in ns.
+    """
+    # Get mode map
+    mode_idxs = _ps_mode_map(Nfreqs=freqs_MHz.size, modes_per_bin=modes_per_bin)
+    
+    # Calculate delay value for each DFT mode
+    delta_freq = (freqs_MHz[1] - freqs_MHz[0]) * 1e6 # MHz -> Hz
+    tau = np.fft.fftshift(np.fft.fftfreq(freqs_MHz.size, d=dfreq)) * 1e9 # ns
+    
+    # Average mode values for the chosen binning
+    tau_c = np.zeros(len(mode_idxs))
+    for i in range(len(mode_idxs)):
+        tau_c[i] = np.mean(tau[mode_idxs[i]])
+    return tau_c
 
 
 def naive_pspec(data, subtract_mean=True, taper=True):
@@ -100,6 +152,61 @@ def trim_flagged_channels(w, x):
         return x[w == 1.]
     else:
         return x[:,w == 1.][w == 1.,:]
+
+
+def pad_input_data(data, flags, inv_var, freqs, Npad=10):
+    """
+    Introduce a flagged padded area in the frequency dimension to avoid 
+    periodicity issues etc.
+
+    Parameters:
+        data (array_like):
+            Data array, of shape `(Ntimes, Nfreqs)`.
+        flags (array_like):
+            Flag array, of shape `(Ntimes, Nfreqs)`.
+        inv_var (array_like):
+            Inverse variance array, of shape `(Ntimes, Nfreqs)`.
+        freqs (array_like):
+            Frequency array, in MHz, of shape `(Nfreqs,)`.
+        Npad (int):
+            Number of padding channels to add on either side of 
+            the frequency range.
+
+    Returns:
+        padded_data (array_like):
+            Padded data array, of shape `(Ntimes, Nfreqs + 2*Npad)`.
+        padded_flags (array_like):
+            Padded flag array, of shape `(Ntimes, Nfreqs + 2*Npad)`.
+        padded_inv_var (array_like):
+            Padded inverse variance array, of shape `(Ntimes, Nfreqs + 2*Npad)`.
+        padded_freqs (array_like):
+            Padded frequency array, or shape `(Nfreqs + 2*Npad)`.
+    """
+    Ntimes, Nfreqs = data.shape
+    assert data.shape == flags.shape == inv_var.shape, \
+        "data, flags, and inv_var array shapes do not match"
+    assert freqs.size == Nfreqs, "freqs array is the wrong size"
+
+    # Create new arrays with padded frequency dimension
+    padded_data = np.zeros((Ntimes, Nfreqs+2*Npad), dtype=data.dtype)
+    padded_flags = np.zeros((Ntimes, Nfreqs+2*Npad), dtype=flags.dtype)
+    padded_inv_var = np.zeros((Ntimes, Nfreqs+2*Npad), dtype=inv_var.dtype)
+    padded_freqs = np.zeros((Nfreqs+2*Npad,), dtype=freqs.dtype)
+    
+    # Insert original data into padded array
+    padded_data[:,Npad:-Npad] = data
+    padded_flags[:,Npad:-Npad] = flags
+    padded_inv_var[:,Npad:-Npad] = inv_var
+    
+    # Fill-in padded freqs array
+    df = freqs[1] - freqs[0]
+    padded_freqs[Npad:-Npad] = freqs
+    for i in range(Npad + 1):
+        padded_freqs[Npad - i] = padded_freqs[Npad] - i*df
+        padded_freqs[-Npad + i - 1] \
+            = padded_freqs[padded_freqs.size - Npad - 1] + i*df
+    
+    return padded_data, padded_flags, padded_inv_var, padded_freqs
 
 
 def form_pseudo_stokes_vis(uvd, convention=1.0):
