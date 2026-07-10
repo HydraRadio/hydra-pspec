@@ -83,7 +83,7 @@ def tau_bins(freqs_MHz, modes_per_bin=1):
     mode_idxs = _ps_mode_map(Nfreqs=freqs_MHz.size, modes_per_bin=modes_per_bin)
     
     # Calculate delay value for each DFT mode
-    delta_freq = (freqs_MHz[1] - freqs_MHz[0]) * 1e6 # MHz -> Hz
+    dfreq = (freqs_MHz[1] - freqs_MHz[0]) * 1e6 # MHz -> Hz
     tau = np.fft.fftshift(np.fft.fftfreq(freqs_MHz.size, d=dfreq)) * 1e9 # ns
     
     # Average mode values for the chosen binning
