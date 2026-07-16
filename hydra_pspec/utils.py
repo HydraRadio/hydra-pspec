@@ -3,6 +3,7 @@ import numpy as np
 from pyuvdata import UVData
 import pyuvdata.utils as uvutils
 from scipy.signal.windows import blackmanharris
+from scipy.integrate import quad
 from astropy import units
 from astropy.units import Quantity
 import ast
@@ -306,6 +307,114 @@ def filter_freqs(freq_str, freqs_in):
     return freqs_out
 
 
+def comoving_kperp_kpara(centre_freq_MHz, bl_metres, tau_ns, h=0.67, Omega_m=0.3):
+    """
+    Calculate the comoving k_perp and k_para values for a given baseline and 
+    delay binning scheme at a given central frequency. 
+    
+    This calculation assumes a flat cosmology with only matter and Lambda, and 
+    assumes the delay approximation (i.e. narrow total bandwidths so that 
+    cosmological evolution can be neglected).
+    
+    Parameters:
+        centre_freq_MHz (float):
+            Centre frequency of the band, in MHz.
+        bl_metres (float):
+            Baseline length, in metres.
+        tau_ns (array_like):
+            Delay bin centres, in ns.
+        h (float, optional):
+            Dimensionless Hubble parameter.
+        Omega_m (float, optional):
+            Fractional total matter density today.
+    
+    Returns:
+        k_perp (float):
+            Perpendicular comoving Fourier mode in h/Mpc.
+        k_par (array_like):
+            Radial comoving Fourier modes in h/Mpc.
+    """
+    # Define constants
+    C = 299792.458 # km/s
+    freq_21_hz = 1.420405751e9 # Hz
+    
+    # Calculate central redshift
+    z_c = freq_21_hz / (centre_freq_MHz * 1e6) - 1.
+     
+    # Dimensionless expansion rate
+    E = lambda z: np.sqrt(Omega_m * (1 + z)**3. + (1. - Omega_m))
+    
+    # Comoving distance [h^-1 Mpc] and derivatives
+    d_comov = quad(lambda z: 1. / E(z), 0., z_c)[0] * (C / 100.)
+    dRperp_dtheta = d_comov
+    dRpara_df = (1 + z_c)**2. / E(z_c) * (C / 100.) / freq_21_hz
+    
+    # Conversion factor from delay [ns] to k_parallel mode [h Mpc-1]
+    # See hera_pspec.conversions (refs: Parsons 2012, Pober 2014, Kohn 2018)
+    tau_to_kpara = 2. * np.pi / dRpara_df / 1e9
+    
+    # Conversion factor from baseline length [metres] to k_perp mode [h Mpc-1]
+    bl_to_kperp = 2. * np.pi * centre_freq_MHz * 1e6 / (C * 1e3 * dRperp_dtheta)
+    
+    return bl_metres * bl_to_kperp, tau_ns * tau_to_kpara
+
+
+def map_to_spherical_kbins(k_bin_edges, centre_freq_MHz, bl_metres, tau_ns, 
+                           h=0.67, Omega_m=0.3):
+    """
+    Map baselines and delay modes to 1D (spherical) comoving Fourier bins.
+    
+    Note that modes that fall outside the binned range will automatically be 
+    mapped to the first or last bin, as all modes should be mapped.
+    
+    Parameters:
+        k_bin_edges (array_like):
+            Edges of the spherical k bins, in h/Mpc units. The bin edges should 
+            be strictly positive and in ascending order.
+        centre_freq_MHz (float):
+            Centre frequency of the band, in MHz.
+        bl_metres (array_like):
+            Array of baseline lengths, in metres.
+        tau_ns (array_like):
+            Delay bin centres, in ns.
+        h (float, optional):
+            Dimensionless Hubble parameter.
+        Omega_m (float, optional):
+            Fractional total matter density today.
+    
+    Returns:
+        index_map (list):
+            List of per-baseline index arrays mapping delay modes to 1D k modes.
+    """
+    bl_metres = np.atleast_1d(bl_metres)
+    
+    # Check that binning is well-specified
+    assert np.all(k_bin_edges >= 0.), \
+        "k_bin_edges must have only positive values"
+    assert np.all(np.diff(k_bin_edges) > 0.), \
+        "k_bin_edges must be in ascending order"
+    
+    # Loop over baselines
+    index_map = []
+    for i, bl in enumerate(bl_metres):
+        
+        # Calculate kperp and kpara for each baseline
+        kperp, kpara = comoving_kperp_kpara(
+                                        centre_freq_MHz=centre_freq_MHz, 
+                                        bl_metres=bl, 
+                                        tau_ns=tau_ns, 
+                                        h=h, 
+                                        Omega_m=Omega_m
+                                        )
+        k = np.sqrt(kperp**2. + kpara**2.)
+        
+        # Assign delay modes to bins
+        idxs = np.digitize(k, bins=k_bin_edges, right=False)
+        index_map.append(idxs)
+    
+    return index_map
+    
+
 def get_git_version_info(directory=None):
     """
     Get git version info from repository in `directory`.
@@ -373,7 +482,6 @@ def add_mtime_to_filepath(fp, join_char="-"):
             fp,
             fp.with_name(f"{fp.name}{join_char}{mtime}")
         )
-
 
 
 def write_numpy_files(

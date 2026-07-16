@@ -73,6 +73,145 @@ def inversion_sample_invgamma(alpha, beta, prior_min, prior_max, ngrid=1000):
     return sample
 
 
+def calculate_inv_gamma_params(s=None, sk=None):
+    """
+    Calculate the quantities needed for the inverse gamma distribution shape 
+    parameters, for a single baseline.
+    
+    Parameters:
+        s (array_like):
+            A set of real-space samples of the field, of shape
+            `(Ntimes, Nfreq)`. This will be Fourier transformed.
+            Alternatively, `sk` can be given.
+        sk (array_like):
+            A set of Fourier-space samples of the field, of shape
+            `(Ntimes, Nfreq)`.  The monopole is expected to be at the center
+            of the frequency axis, i.e. the frequency axis has been fftshifted.
+    
+    Returns:
+        Ndof (int):
+            Number of degrees of freedom that went into the average (=Ntimes).
+        beta (array_like):
+            Array of empirical power spectrum values in each delay bin.
+    """
+    # Check and transform input data
+    if s is None and sk is None:
+        raise ValueError("Must pass in s (real space) or sk (Fourier space) vector.")
+    
+    if sk is None:
+        axes = (1,)
+        sk = np.fft.ifftshift(s, axes=axes)
+        sk = np.fft.fftn(sk, axes=axes)
+        sk = np.fft.fftshift(sk, axes=axes)
+    Ntimes, Nfreqs = sk.shape
+    
+    # Precompute inverse gamma dist. scale parameter for each delay mode
+    beta = np.sum(sk * sk.conj(), axis=0).real
+    Ndof = Ntimes
+    return Ndof, beta
+
+
+def sample_pspec_multiple_baselines(mode_index_map,
+                                    Ndof,
+                                    beta,
+                                    prior_bounds=None,
+                                    comm=None):
+    """
+    Draw samples of the 1D (spherical) power spectrum, and calculate the 
+    resulting per-baseline delay power spectrum. Uses MPI.
+    
+    Parameters:
+        mode_index_map (list):
+            List of per-baseline index arrays mapping delay modes to 1D k 
+            modes. See `utils.map_to_spherical_kbins()` for more information.
+        Ndof (array_like):
+            Number of degrees of freedom that went into the average (=Ntimes). 
+            Array of shape `(Nbls,)`.
+        beta (array_like):
+            Array of empirical power spectrum values in each delay bin. Array 
+            of shape `(Nbls, Nfreqs)`.
+        prior_bounds (tuple of array_like):
+            Minimum and maximum bounds of the 1D power spectrum in each of the 
+            |k| bins. Shape `(2, Nkbins)`.
+        comm (MPI Communicator):
+            MPI communicator.
+    
+    Returns:
+        ps_1d (array_like):
+            Random draw of the 1D (spherical) power spectrum. Array of shape 
+            `(Nkbins,)`.
+        ps_delay (array_like):
+            Delay power spectrum for each baseline and delay mode, computed by 
+            directly mapping from 1D k bins to corresponding baseline/delays. 
+            Array of shape `(Nbls, Nfreqs)`.
+    """
+    # Get MPI info
+    num_workers = comm.Get_size()
+    myid = comm.Get_rank()
+    
+    # Check prior bounds
+    prior_min, prior_max = prior_bounds
+    _check_prior_values(prior_min, prior_max)
+    Nkbins = prior_min.size # infer Nkbins from prior array
+    
+    # Reduce with Sum operation to send Ndof and beta values to the root worker
+    combined_Ndof = np.zeros_like(Ndof)
+    combined_beta = np.zeros_like(beta)
+    comm.Reduce(Ndof, combined_Ndof, root=0) # default operation is SUM
+    comm.Reduce(beta, combined_beta, root=0) # default operation is SUM
+    comm.barrier()
+    
+    # Prepare output arrays
+    Nbls, Nfreqs = beta.shape
+    assert Ndof.size == Nbls, "Ndof array must have Nbls entries"
+    ps_1d = np.zeros(Nkbins)
+    ps_delays = np.zeros((Nbls, Nfreqs))
+    
+    # Only root worker draws power spectrum values
+    if myid == 0:
+        
+        # Re-map values to 1D k bins
+        Ndof_1d = np.zeros(Nkbins)
+        beta_1d = np.zeros(Nkbins)
+        for j in range(Nbls):
+            # Get idxs of k bin for each delay mode for this baseline
+            idxs = mode_index_map[j]
+            
+            # Sum Ndof and beta values that belong to this k bin
+            Ndof_per_delay = combined_Ndof[j] * np.ones(Nfreqs)
+            beta_1d += combined_beta[j, idxs]
+            Ndof_1d += Ndof_per_delay[idxs] # count no. of added Ndof
+        
+        # Draw power spectrum value for each k bin
+        for i in range(Nkbins):
+            # alpha[k] = Ndof[k] + 1 - 1
+            # Need to subtract 1 that wasn't subtracted earlier, but add 1 for 
+            # the conjugate prior
+            ps_1d[i] = inversion_sample_invgamma(
+                                alpha=Ndof_1d[i],
+                                beta=beta_1d[i], 
+                                prior_min=prior_min[i], 
+                                prior_max=prior_max[i]
+                                )
+        
+    # Broadcast power spectrum values
+    comm.Bcast(ps_1d, root=0)
+    
+    # Unpack into correct ordering for native tau modes for each baseline
+    ps_delay = np.zeros((Nbls, Nfreqs))
+    for j in range(Nbls):
+        
+        # Get idxs of k bin for each delay mode for this baseline
+        idxs = mode_index_map[j]
+        
+        # Assign values of 1D k bin modes to delay power spectrum
+        ps_delay[j] = ps_1d[idxs]
+        
+        # FIXME: Is any additional normalisation needed?
+    
+    return ps_1d, ps_delay
+
+
 def sample_pspec(s=None, sk=None, prior_bounds=None, modes_per_bin=1):
     """
     Draw samples of the delay power spectrum bandpowers, given a signal 
@@ -623,7 +762,7 @@ def gibbs_sample_with_fg(
         write_Niter (int):
             Number of iterations between output file writing.
         out_dir (str or Path):
-            Directory where samples will be saved to disk.  If None (default),
+            Directory where samples will be saved to disk. If None (default),
             samples are not written to disk.
         map_estimate (bool):
             Provide the maximum a posteriori sample only, i.e. sets
@@ -743,3 +882,6 @@ def gibbs_sample_with_fg(
         print()
 
     return signal_cr, signal_ps, fg_amps, chisq, ln_post, write_time
+
+
+
