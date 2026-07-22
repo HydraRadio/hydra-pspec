@@ -174,13 +174,13 @@ def sample_pspec_multiple_baselines(mode_index_map,
         Ndof_1d = np.zeros(Nkbins)
         beta_1d = np.zeros(Nkbins)
         for j in range(Nbls):
-            # Get idxs of k bin for each delay mode for this baseline
-            idxs = mode_index_map[j]
-            
-            # Sum Ndof and beta values that belong to this k bin
+        
+            # Sum Ndof and beta values that belong to each k bin (implemented 
+            # as a loop over delay modes, each of which contributes to a k bin) 
             Ndof_per_delay = combined_Ndof[j] * np.ones(Nfreqs)
-            beta_1d += combined_beta[j, idxs]
-            Ndof_1d += Ndof_per_delay[idxs] # count no. of added Ndof
+            for idx_delay, idx_kbin in enumerate(mode_index_map[j]):
+                beta_1d[idx_kbin] += combined_beta[j, idx_delay]
+                Ndof_1d[idx_kbin] += Ndof_per_delay[idx_delay] # count no. of added Ndof
         
         # Draw power spectrum value for each k bin
         for i in range(Nkbins):
@@ -201,11 +201,9 @@ def sample_pspec_multiple_baselines(mode_index_map,
     ps_delay = np.zeros((Nbls, Nfreqs))
     for j in range(Nbls):
         
-        # Get idxs of k bin for each delay mode for this baseline
-        idxs = mode_index_map[j]
-        
-        # Assign values of 1D k bin modes to delay power spectrum
-        ps_delay[j] = ps_1d[idxs]
+        # Assign values of 1D k bin modes to delay power spectrum (gets value 
+        # of corresponding 1D k mode for each delay) 
+        ps_delay[j] = ps_1d[mode_index_map[j]]
         
         # FIXME: Is any additional normalisation needed?
     

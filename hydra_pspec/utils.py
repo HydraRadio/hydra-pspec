@@ -384,7 +384,9 @@ def map_to_spherical_kbins(k_bin_edges, centre_freq_MHz, bl_metres, tau_ns,
     
     Returns:
         index_map (list):
-            List of per-baseline index arrays mapping delay modes to 1D k modes.
+            List of per-baseline index arrays mapping delay modes to 1D k 
+            modes. For each baseline, there is an array of size `Ndelays`. Each 
+            array entry designates the 1D k-bin that that delay maps to.
     """
     bl_metres = np.atleast_1d(bl_metres)
     
