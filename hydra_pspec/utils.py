@@ -3,6 +3,7 @@ import numpy as np
 from pyuvdata import UVData
 import pyuvdata.utils as uvutils
 from scipy.signal.windows import blackmanharris
+from scipy.integrate import quad
 from astropy import units
 from astropy.units import Quantity
 import ast
@@ -11,6 +12,25 @@ import os
 import shutil
 from pathlib import Path
 from datetime import datetime
+
+
+def _ps_mode_map(Nfreqs, modes_per_bin):
+    """
+    Mapping between Fourier (delay) modes and power spectrum bins.
+    
+    Parameters:
+        Nfreqs (int):
+            Number of frequency channels.
+        modes_per_bin (int):
+            Number of delay modes in each delay power spectrum bin.
+    
+    Returns:
+        mapping (list of array_like):
+            List of arrays, one array for each delay bin. Each array contains 
+            the Fourier mode indices for that bin.
+    """
+    return np.array_split(np.arange(Nfreqs), Nfreqs // modes_per_bin)
+
 
 def fourier_operator(n):
     """
@@ -28,17 +48,50 @@ def fourier_operator(n):
 
     Parameters:
     	n (int):
-    		Length of the data that the operator will be applied to.
+    		Length of the data that the operator will be applied to. This 
+    		should be a multiple of 2 (but doesn't have to be a power of two). 
 
     Returns:
     	fourier_op (array_like):
     		Complex Fourier operator matrix of shape `(n, n)`.
     """
+    if n % 2 == 1:
+        raise ValueError("Length must even (divisible by 2)")
     i_x = (np.arange(n) - n//2).reshape(1, -1)
     i_k = (np.arange(n) - n//2).reshape(-1, 1)
     fourier_op = np.exp(-2*np.pi*1j * (i_k * i_x / n))
 
     return fourier_op
+
+
+def tau_bins(freqs_MHz, modes_per_bin=1):
+    """
+    Calculate delay bin centre values for a given frequency band and binning. 
+    Includes the correct ordering of the delay bins (matched to the ordering of 
+    the `fourier_operator()` function).
+    
+    Parameters:
+        freqs_MHz (array_like):
+            Frequency array.
+        modes_per_bin (int):
+            Number of delay modes in each delay power spectrum bin.
+            
+    Returns:
+        tau (array_like):
+            Array of delay values at bin centre, in ns.
+    """
+    # Get mode map
+    mode_idxs = _ps_mode_map(Nfreqs=freqs_MHz.size, modes_per_bin=modes_per_bin)
+    
+    # Calculate delay value for each DFT mode
+    dfreq = (freqs_MHz[1] - freqs_MHz[0]) * 1e6 # MHz -> Hz
+    tau = np.fft.fftshift(np.fft.fftfreq(freqs_MHz.size, d=dfreq)) * 1e9 # ns
+    
+    # Average mode values for the chosen binning
+    tau_c = np.zeros(len(mode_idxs))
+    for i in range(len(mode_idxs)):
+        tau_c[i] = np.mean(tau[mode_idxs[i]])
+    return tau_c
 
 
 def naive_pspec(data, subtract_mean=True, taper=True):
@@ -100,6 +153,61 @@ def trim_flagged_channels(w, x):
         return x[w == 1.]
     else:
         return x[:,w == 1.][w == 1.,:]
+
+
+def pad_input_data(data, flags, inv_var, freqs, Npad=10):
+    """
+    Introduce a flagged padded area in the frequency dimension to avoid 
+    periodicity issues etc.
+
+    Parameters:
+        data (array_like):
+            Data array, of shape `(Ntimes, Nfreqs)`.
+        flags (array_like):
+            Flag array, of shape `(Ntimes, Nfreqs)`.
+        inv_var (array_like):
+            Inverse variance array, of shape `(Ntimes, Nfreqs)`.
+        freqs (array_like):
+            Frequency array, in MHz, of shape `(Nfreqs,)`.
+        Npad (int):
+            Number of padding channels to add on either side of 
+            the frequency range.
+
+    Returns:
+        padded_data (array_like):
+            Padded data array, of shape `(Ntimes, Nfreqs + 2*Npad)`.
+        padded_flags (array_like):
+            Padded flag array, of shape `(Ntimes, Nfreqs + 2*Npad)`.
+        padded_inv_var (array_like):
+            Padded inverse variance array, of shape `(Ntimes, Nfreqs + 2*Npad)`.
+        padded_freqs (array_like):
+            Padded frequency array, or shape `(Nfreqs + 2*Npad)`.
+    """
+    Ntimes, Nfreqs = data.shape
+    assert data.shape == flags.shape == inv_var.shape, \
+        "data, flags, and inv_var array shapes do not match"
+    assert freqs.size == Nfreqs, "freqs array is the wrong size"
+
+    # Create new arrays with padded frequency dimension
+    padded_data = np.zeros((Ntimes, Nfreqs+2*Npad), dtype=data.dtype)
+    padded_flags = np.zeros((Ntimes, Nfreqs+2*Npad), dtype=flags.dtype)
+    padded_inv_var = np.zeros((Ntimes, Nfreqs+2*Npad), dtype=inv_var.dtype)
+    padded_freqs = np.zeros((Nfreqs+2*Npad,), dtype=freqs.dtype)
+    
+    # Insert original data into padded array
+    padded_data[:,Npad:-Npad] = data
+    padded_flags[:,Npad:-Npad] = flags
+    padded_inv_var[:,Npad:-Npad] = inv_var
+    
+    # Fill-in padded freqs array
+    df = freqs[1] - freqs[0]
+    padded_freqs[Npad:-Npad] = freqs
+    for i in range(Npad + 1):
+        padded_freqs[Npad - i] = padded_freqs[Npad] - i*df
+        padded_freqs[-Npad + i - 1] \
+            = padded_freqs[padded_freqs.size - Npad - 1] + i*df
+    
+    return padded_data, padded_flags, padded_inv_var, padded_freqs
 
 
 def form_pseudo_stokes_vis(uvd, convention=1.0):
@@ -199,6 +307,116 @@ def filter_freqs(freq_str, freqs_in):
     return freqs_out
 
 
+def comoving_kperp_kpara(centre_freq_MHz, bl_metres, tau_ns, h=0.67, Omega_m=0.3):
+    """
+    Calculate the comoving k_perp and k_para values for a given baseline and 
+    delay binning scheme at a given central frequency. 
+    
+    This calculation assumes a flat cosmology with only matter and Lambda, and 
+    assumes the delay approximation (i.e. narrow total bandwidths so that 
+    cosmological evolution can be neglected).
+    
+    Parameters:
+        centre_freq_MHz (float):
+            Centre frequency of the band, in MHz.
+        bl_metres (float):
+            Baseline length, in metres.
+        tau_ns (array_like):
+            Delay bin centres, in ns.
+        h (float, optional):
+            Dimensionless Hubble parameter.
+        Omega_m (float, optional):
+            Fractional total matter density today.
+    
+    Returns:
+        k_perp (float):
+            Perpendicular comoving Fourier mode in h/Mpc.
+        k_par (array_like):
+            Radial comoving Fourier modes in h/Mpc.
+    """
+    # Define constants
+    C = 299792.458 # km/s
+    freq_21_hz = 1.420405751e9 # Hz
+    
+    # Calculate central redshift
+    z_c = freq_21_hz / (centre_freq_MHz * 1e6) - 1.
+     
+    # Dimensionless expansion rate
+    E = lambda z: np.sqrt(Omega_m * (1 + z)**3. + (1. - Omega_m))
+    
+    # Comoving distance [h^-1 Mpc] and derivatives
+    d_comov = quad(lambda z: 1. / E(z), 0., z_c)[0] * (C / 100.)
+    dRperp_dtheta = d_comov
+    dRpara_df = (1 + z_c)**2. / E(z_c) * (C / 100.) / freq_21_hz
+    
+    # Conversion factor from delay [ns] to k_parallel mode [h Mpc-1]
+    # See hera_pspec.conversions (refs: Parsons 2012, Pober 2014, Kohn 2018)
+    tau_to_kpara = 2. * np.pi / dRpara_df / 1e9
+    
+    # Conversion factor from baseline length [metres] to k_perp mode [h Mpc-1]
+    bl_to_kperp = 2. * np.pi * centre_freq_MHz * 1e6 / (C * 1e3 * dRperp_dtheta)
+    
+    return bl_metres * bl_to_kperp, tau_ns * tau_to_kpara
+
+
+def map_to_spherical_kbins(k_bin_edges, centre_freq_MHz, bl_metres, tau_ns, 
+                           h=0.67, Omega_m=0.3):
+    """
+    Map baselines and delay modes to 1D (spherical) comoving Fourier bins.
+    
+    Note that modes that fall outside the binned range will automatically be 
+    mapped to the first or last bin, as all modes should be mapped.
+    
+    Parameters:
+        k_bin_edges (array_like):
+            Edges of the spherical k bins, in h/Mpc units. The bin edges should 
+            be strictly positive and in ascending order.
+        centre_freq_MHz (float):
+            Centre frequency of the band, in MHz.
+        bl_metres (array_like):
+            Array of baseline lengths, in metres.
+        tau_ns (array_like):
+            Delay bin centres, in ns.
+        h (float, optional):
+            Dimensionless Hubble parameter.
+        Omega_m (float, optional):
+            Fractional total matter density today.
+    
+    Returns:
+        index_map (list):
+            List of per-baseline index arrays mapping delay modes to 1D k 
+            modes. For each baseline, there is an array of size `Ndelays`. Each 
+            array entry designates the 1D k-bin that that delay maps to.
+    """
+    bl_metres = np.atleast_1d(bl_metres)
+    
+    # Check that binning is well-specified
+    assert np.all(k_bin_edges >= 0.), \
+        "k_bin_edges must have only positive values"
+    assert np.all(np.diff(k_bin_edges) > 0.), \
+        "k_bin_edges must be in ascending order"
+    
+    # Loop over baselines
+    index_map = []
+    for i, bl in enumerate(bl_metres):
+        
+        # Calculate kperp and kpara for each baseline
+        kperp, kpara = comoving_kperp_kpara(
+                                        centre_freq_MHz=centre_freq_MHz, 
+                                        bl_metres=bl, 
+                                        tau_ns=tau_ns, 
+                                        h=h, 
+                                        Omega_m=Omega_m
+                                        )
+        k = np.sqrt(kperp**2. + kpara**2.)
+        
+        # Assign delay modes to bins
+        idxs = np.digitize(k, bins=k_bin_edges, right=False)
+        index_map.append(idxs)
+    
+    return index_map
+    
+
 def get_git_version_info(directory=None):
     """
     Get git version info from repository in `directory`.
@@ -266,7 +484,6 @@ def add_mtime_to_filepath(fp, join_char="-"):
             fp,
             fp.with_name(f"{fp.name}{join_char}{mtime}")
         )
-
 
 
 def write_numpy_files(
